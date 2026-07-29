@@ -1,5 +1,6 @@
 package com.backend.config;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -8,12 +9,13 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.argon2.Argon2PasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.csrf.CsrfFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -21,7 +23,11 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import com.backend.security.TenantSessionAuthenticationFilter;
 
 @Configuration
-@EnableConfigurationProperties(TenantAuthProperties.class)
+@EnableMethodSecurity
+@EnableConfigurationProperties({
+        TenantAuthProperties.class,
+        MarketplaceProperties.class
+})
 public class SecurityConfig {
 
     @Bean
@@ -35,7 +41,9 @@ public class SecurityConfig {
 
         http
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
-                .csrf(csrf -> csrf.csrfTokenRepository(csrfRepository))
+                .csrf(csrf -> csrf
+                        .csrfTokenRepository(csrfRepository)
+                        .spa())
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .requestCache(cache -> cache.disable())
@@ -49,6 +57,7 @@ public class SecurityConfig {
                                 "/api/auth/login",
                                 "/api/auth/logout",
                                 "/api/auth/csrf",
+                                "/error",
                                 "/actuator/health",
                                 "/v3/api-docs/**",
                                 "/swagger-ui/**",
@@ -62,6 +71,7 @@ public class SecurityConfig {
                 .exceptionHandling(exceptions -> exceptions
                         .authenticationEntryPoint((request, response, exception) -> {
                             response.setStatus(401);
+                            response.setCharacterEncoding(StandardCharsets.UTF_8.name());
                             response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
                             response.getWriter().write(
                                     "{\"type\":\"about:blank\",\"title\":\"Unauthorized\","
@@ -70,6 +80,7 @@ public class SecurityConfig {
                         })
                         .accessDeniedHandler((request, response, exception) -> {
                             response.setStatus(403);
+                            response.setCharacterEncoding(StandardCharsets.UTF_8.name());
                             response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
                             response.getWriter().write(
                                     "{\"type\":\"about:blank\",\"title\":\"Forbidden\","
@@ -78,7 +89,7 @@ public class SecurityConfig {
                         }))
                 .addFilterBefore(
                         tenantSessionAuthenticationFilter,
-                        UsernamePasswordAuthenticationFilter.class);
+                        CsrfFilter.class);
 
         return http.build();
     }
