@@ -1,6 +1,7 @@
 package com.backend;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -503,6 +504,51 @@ class TenantAuthenticationIntegrationTest {
                 .query(Integer.class)
                 .single()).isZero();
 
+        MvcResult reconnectAuthorizeResult = mockMvc.perform(
+                        post("/api/marketplace-connections/authorize")
+                                .cookie(csrf.cookie(), sessionCookie)
+                                .header("X-XSRF-TOKEN", csrf.token())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                        {
+                                          "marketplace": "TIKTOK_SHOP",
+                                          "returnUrl": "http://localhost:5173/connect"
+                                        }
+                                        """))
+                .andExpect(status().isOk())
+                .andReturn();
+        String reconnectAuthorizationUrl = JsonPath.read(
+                reconnectAuthorizeResult.getResponse().getContentAsString(),
+                "$.authorizationUrl");
+        String reconnectState = queryParameter(reconnectAuthorizationUrl, "state");
+        mockMvc.perform(get("/api/marketplace-connections/callback/tiktok-shop")
+                        .cookie(sessionCookie)
+                        .queryParam("code", "reconnect-authorization-code")
+                        .queryParam("state", reconnectState))
+                .andExpect(status().isFound())
+                .andExpect(result -> assertThat(
+                        result.getResponse().getHeader("Location"))
+                        .contains("connection=success"));
+        assertThat(jdbcClient.sql("""
+                        SELECT COUNT(*)
+                        FROM marketplace_accounts
+                        WHERE tenant_id = :tenantId
+                          AND marketplace_id =
+                              '50000000-0000-0000-0000-000000000001'
+                          AND external_account_id = 'tts-integration-shop'
+                        """)
+                .param("tenantId", TENANT_ID)
+                .query(Integer.class)
+                .single()).isEqualTo(1);
+        assertThat(jdbcClient.sql("""
+                        SELECT connection_status
+                        FROM marketplace_accounts
+                        WHERE id = :accountId
+                        """)
+                .param("accountId", accountId)
+                .query(String.class)
+                .single()).isEqualTo("CONNECTED");
+
         MvcResult expiredAuthorizeResult = mockMvc.perform(
                         post("/api/marketplace-connections/authorize")
                                 .cookie(csrf.cookie(), sessionCookie)
@@ -582,6 +628,136 @@ class TenantAuthenticationIntegrationTest {
                         """)
                 .query(Integer.class)
                 .single()).isEqualTo(1);
+    }
+
+    @Test
+    void marketplaceShopCannotBeConnectedByAnotherTenant() throws Exception {
+        seedMarketplacePermissions();
+        jdbcClient.sql("""
+                INSERT INTO marketplaces
+                  (id, marketplace_code, marketplace_name, mock_base_url, is_active)
+                VALUES
+                  ('50000000-0000-0000-0000-000000000001',
+                   'TIKTOK_SHOP', 'TikTok Shop', 'http://127.0.0.1', TRUE)
+                """).update();
+        jdbcClient.sql("""
+                INSERT INTO tenants (id, tenant_code, tenant_name, status)
+                VALUES
+                  ('10000000-0000-0000-0000-000000000002',
+                   'OTHER_SHOP', 'Doanh nghiệp khác', 'ACTIVE')
+                """).update();
+        jdbcClient.sql("""
+                INSERT INTO marketplace_accounts
+                  (id, tenant_id, marketplace_id, external_account_id,
+                   external_shop_name, site_id, currency, timezone_name,
+                   connection_status, settings_json, created_at, updated_at)
+                VALUES
+                  ('60000000-0000-0000-0000-000000000001',
+                   '10000000-0000-0000-0000-000000000002',
+                   '50000000-0000-0000-0000-000000000001',
+                   'tts-integration-shop', 'TikTok Integration Shop',
+                   'VN', 'VND', 'Asia/Ho_Chi_Minh',
+                   'CONNECTED', '{}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """).update();
+
+        Csrf csrf = getCsrf();
+        MvcResult loginResult = mockMvc.perform(post("/api/auth/login")
+                        .cookie(csrf.cookie())
+                        .header("X-XSRF-TOKEN", csrf.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "owner@demo.vn",
+                                  "password": "Tenant@123"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andReturn();
+        Cookie sessionCookie =
+                loginResult.getResponse().getCookie("omni_tenant_session");
+        mockMvc.perform(post("/api/auth/change-password")
+                        .cookie(csrf.cookie(), sessionCookie)
+                        .header("X-XSRF-TOKEN", csrf.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "currentPassword": "Tenant@123",
+                                  "newPassword": "NewTenant@123",
+                                  "confirmPassword": "NewTenant@123"
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        MvcResult authorizeResult = mockMvc.perform(
+                        post("/api/marketplace-connections/authorize")
+                                .cookie(csrf.cookie(), sessionCookie)
+                                .header("X-XSRF-TOKEN", csrf.token())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                        {
+                                          "marketplace": "TIKTOK_SHOP",
+                                          "returnUrl": "http://localhost:5173/connect"
+                                        }
+                                        """))
+                .andExpect(status().isOk())
+                .andReturn();
+        String authorizationUrl = JsonPath.read(
+                authorizeResult.getResponse().getContentAsString(),
+                "$.authorizationUrl");
+        String state = queryParameter(authorizationUrl, "state");
+
+        mockMvc.perform(get("/api/marketplace-connections/callback/tiktok-shop")
+                        .cookie(sessionCookie)
+                        .queryParam("code", "integration-authorization-code")
+                        .queryParam("state", state))
+                .andExpect(status().isFound())
+                .andExpect(result -> assertThat(
+                        result.getResponse().getHeader("Location"))
+                        .contains("connection=error")
+                        .contains("error=SHOP_ALREADY_CONNECTED_TO_ANOTHER_TENANT"));
+
+        assertThat(jdbcClient.sql("""
+                        SELECT COUNT(*)
+                        FROM marketplace_accounts
+                        WHERE marketplace_id =
+                              '50000000-0000-0000-0000-000000000001'
+                          AND external_account_id = 'tts-integration-shop'
+                        """)
+                .query(Integer.class)
+                .single()).isEqualTo(1);
+        assertThat(jdbcClient.sql("""
+                        SELECT tenant_id
+                        FROM marketplace_accounts
+                        WHERE marketplace_id =
+                              '50000000-0000-0000-0000-000000000001'
+                          AND external_account_id = 'tts-integration-shop'
+                        """)
+                .query(String.class)
+                .single()).isEqualTo("10000000-0000-0000-0000-000000000002");
+        assertThat(jdbcClient.sql("""
+                        SELECT status
+                        FROM oauth_authorization_sessions
+                        WHERE state_hash IS NOT NULL
+                        """)
+                .query(String.class)
+                .single()).isEqualTo("FAILED");
+
+        assertThatThrownBy(() -> jdbcClient.sql("""
+                        INSERT INTO marketplace_accounts
+                          (id, tenant_id, marketplace_id, external_account_id,
+                           external_shop_name, site_id, currency, timezone_name,
+                           connection_status, settings_json, created_at, updated_at)
+                        VALUES
+                          ('60000000-0000-0000-0000-000000000002',
+                           :tenantId,
+                           '50000000-0000-0000-0000-000000000001',
+                           'tts-integration-shop', 'Duplicate Shop',
+                           'VN', 'VND', 'Asia/Ho_Chi_Minh',
+                           'CONNECTED', '{}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                        """)
+                .param("tenantId", TENANT_ID)
+                .update()).isInstanceOf(
+                        org.springframework.dao.DataIntegrityViolationException.class);
     }
 
     private void seedMarketplacePermissions() {

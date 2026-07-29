@@ -131,8 +131,8 @@ CREATE TABLE marketplace_accounts (
     FOREIGN KEY (tenant_id) REFERENCES tenants(id),
   CONSTRAINT fk_test_marketplace_account_marketplace
     FOREIGN KEY (marketplace_id) REFERENCES marketplaces(id),
-  CONSTRAINT uq_test_marketplace_account_scope
-    UNIQUE (tenant_id, marketplace_id, external_account_id)
+  CONSTRAINT uq_marketplace_accounts_external_owner
+    UNIQUE (marketplace_id, external_account_id)
 );
 
 CREATE TABLE marketplace_credentials (
