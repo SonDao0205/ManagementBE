@@ -28,4 +28,8 @@ public interface MarketplaceAccountRepository
                     String tenantId,
                     String marketplaceId,
                     String externalAccountId);
+
+    Optional<MarketplaceAccountEntity> findByMarketplaceIdAndExternalAccountId(
+            String marketplaceId,
+            String externalAccountId);
 }

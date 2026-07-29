@@ -2,8 +2,10 @@ package com.backend.controller;
 
 import java.net.URI;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
@@ -40,5 +42,28 @@ public class ApiExceptionHandler {
                 fieldErrors.putIfAbsent(error.getField(), error.getDefaultMessage()));
         problem.setProperty("fieldErrors", fieldErrors);
         return ResponseEntity.badRequest().body(problem);
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    ResponseEntity<ProblemDetail> handleDataIntegrity(
+            DataIntegrityViolationException exception) {
+        String message = exception.getMostSpecificCause().getMessage();
+        boolean marketplaceOwnershipConflict = message != null
+                && message.toLowerCase(Locale.ROOT)
+                        .contains("uq_marketplace_accounts_external_owner");
+        String code = marketplaceOwnershipConflict
+                ? "SHOP_ALREADY_CONNECTED_TO_ANOTHER_TENANT"
+                : "DATA_INTEGRITY_CONFLICT";
+        String detail = marketplaceOwnershipConflict
+                ? "Shop này đã được liên kết với một doanh nghiệp khác."
+                : "Dữ liệu yêu cầu xung đột với dữ liệu hiện có.";
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+                HttpStatus.CONFLICT,
+                detail);
+        problem.setTitle("Data conflict");
+        problem.setType(URI.create(
+                "urn:omnichannel:problem:" + code.toLowerCase()));
+        problem.setProperty("code", code);
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(problem);
     }
 }

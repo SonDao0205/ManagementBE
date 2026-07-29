@@ -202,10 +202,11 @@ public class MarketplaceConnectionServiceImpl implements MarketplaceConnectionSe
         authorization.setUpdatedAt(now);
         authorizationSessionRepository.save(authorization);
 
+        MarketplaceConnector connector = null;
+        MarketplaceConnector.TokenResult token = null;
         try {
-            MarketplaceConnector connector = connectorRegistry.require(normalizedCode);
-            MarketplaceConnector.TokenResult token =
-                    connector.exchangeAuthorizationCode(
+            connector = connectorRegistry.require(normalizedCode);
+            token = connector.exchangeAuthorizationCode(
                             authorizationCode,
                             callbackUri(normalizedCode));
             MarketplaceConnector.ShopProfile shop =
@@ -225,6 +226,7 @@ public class MarketplaceConnectionServiceImpl implements MarketplaceConnectionSe
                     normalizedCode,
                     null);
         } catch (AuthenticationException exception) {
+            revokeIssuedToken(connector, token);
             authorization.setStatus("FAILED");
             authorization.setFailureCode(exception.getCode());
             authorization.setUpdatedAt(Instant.now());
@@ -242,6 +244,22 @@ public class MarketplaceConnectionServiceImpl implements MarketplaceConnectionSe
                     "error",
                     normalizedCode,
                     exception.getCode());
+        }
+    }
+
+    private static void revokeIssuedToken(
+            MarketplaceConnector connector,
+            MarketplaceConnector.TokenResult token) {
+        if (connector == null || token == null) {
+            return;
+        }
+        try {
+            connector.revoke(token.accessToken());
+            if (token.refreshToken() != null && !token.refreshToken().isBlank()) {
+                connector.revoke(token.refreshToken());
+            }
+        } catch (AuthenticationException ignored) {
+            // The local ownership rejection must not depend on simulator uptime.
         }
     }
 
@@ -411,21 +429,15 @@ public class MarketplaceConnectionServiceImpl implements MarketplaceConnectionSe
             MarketplaceConnector.ShopProfile shop,
             Instant now) {
         MarketplaceAccountEntity account = accountRepository
-                .findByTenantIdAndMarketplaceIdAndExternalAccountId(
-                        principal.tenantId(),
+                .findByMarketplaceIdAndExternalAccountId(
                         marketplace.getId(),
                         shop.externalAccountId())
-                .orElseGet(() -> {
-                    MarketplaceAccountEntity created = new MarketplaceAccountEntity();
-                    created.setId(UUID.randomUUID().toString());
-                    created.setTenantId(principal.tenantId());
-                    created.setMarketplaceId(marketplace.getId());
-                    created.setExternalAccountId(shop.externalAccountId());
-                    created.setCreatedByUserId(principal.userId());
-                    created.setSettingsJson("{}");
-                    created.setCreatedAt(now);
-                    return created;
-                });
+                .map(existing -> requireSameTenantOwner(existing, principal.tenantId()))
+                .orElseGet(() -> newMarketplaceAccount(
+                        principal,
+                        marketplace,
+                        shop,
+                        now));
         String previousStatus = account.getConnectionStatus();
         updateShop(account, shop);
         account.setConnectionStatus(CONNECTED);
@@ -457,6 +469,34 @@ public class MarketplaceConnectionServiceImpl implements MarketplaceConnectionSe
                 previousStatus == null ? "INITIAL_AUTHORIZATION" : "REAUTHORIZED",
                 principal.userId());
         return account;
+    }
+
+    private static MarketplaceAccountEntity requireSameTenantOwner(
+            MarketplaceAccountEntity account,
+            String tenantId) {
+        if (!account.getTenantId().equals(tenantId)) {
+            throw new AuthenticationException(
+                    HttpStatus.CONFLICT,
+                    "SHOP_ALREADY_CONNECTED_TO_ANOTHER_TENANT",
+                    "Shop này đã được liên kết với một doanh nghiệp khác.");
+        }
+        return account;
+    }
+
+    private static MarketplaceAccountEntity newMarketplaceAccount(
+            TenantPrincipal principal,
+            MarketplaceEntity marketplace,
+            MarketplaceConnector.ShopProfile shop,
+            Instant now) {
+        MarketplaceAccountEntity created = new MarketplaceAccountEntity();
+        created.setId(UUID.randomUUID().toString());
+        created.setTenantId(principal.tenantId());
+        created.setMarketplaceId(marketplace.getId());
+        created.setExternalAccountId(shop.externalAccountId());
+        created.setCreatedByUserId(principal.userId());
+        created.setSettingsJson("{}");
+        created.setCreatedAt(now);
+        return created;
     }
 
     private void applyToken(
