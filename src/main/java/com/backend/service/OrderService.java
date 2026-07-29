@@ -68,6 +68,11 @@ public class OrderService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         BigDecimal discountAmount = request.discountAmount() != null ? request.discountAmount() : BigDecimal.ZERO;
+        // Bug fix: discount cannot exceed total amount
+        if (discountAmount.compareTo(totalAmount) > 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Discount amount (" + discountAmount + ") cannot exceed total amount (" + totalAmount + ")");
+        }
         BigDecimal finalAmount = totalAmount.subtract(discountAmount);
 
         // Generate order code
@@ -84,7 +89,9 @@ public class OrderService {
         order.setTotalAmount(totalAmount);
         order.setDiscountAmount(discountAmount);
         order.setFinalAmount(finalAmount);
-        order.setPaymentStatus(request.paymentStatus() != null ? request.paymentStatus() : "UNPAID");
+        // Bug fix: default paymentStatus is COD (matches DB CHECK constraint: PAID|COD|REFUNDED), not 'UNPAID'
+        order.setPaymentStatus(request.paymentStatus() != null && !request.paymentStatus().isBlank()
+                ? request.paymentStatus() : "COD");
         order.setStatus("PENDING");
         order.setCreatedAt(Instant.now());
         order.setUpdatedAt(Instant.now());

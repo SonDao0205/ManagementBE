@@ -44,7 +44,10 @@ public class ProductService {
         boolean hasSearch = search != null && !search.isBlank();
         boolean hasStatus = status != null && !status.isBlank();
 
-        if (hasSearch) {
+        if (hasSearch && hasStatus) {
+            // Bug fix: support filtering by BOTH search keyword AND status simultaneously
+            page = productRepository.findByTenantIdAndSearchAndStatus(tenantId, search, status, pageable);
+        } else if (hasSearch) {
             page = productRepository.findByTenantIdAndSearch(tenantId, search, pageable);
         } else if (hasStatus) {
             page = productRepository.findAllByTenantIdAndStatusAndDeletedAtIsNull(tenantId, status, pageable);
