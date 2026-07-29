@@ -18,4 +18,8 @@ public interface ShipmentRepository extends JpaRepository<ShipmentEntity, String
     Optional<ShipmentEntity> findFirstByTenantIdAndWaybillCodeIgnoreCase(String tenantId, String waybillCode);
 
     Optional<ShipmentEntity> findFirstByTenantIdAndOrderId(String tenantId, String orderId);
+
+    // Bug fix: search method required by ShipmentService.list()
+    Page<ShipmentEntity> findAllByTenantIdAndWaybillCodeContainingIgnoreCaseOrTenantIdAndCarrierNameContainingIgnoreCase(
+            String tenantId1, String waybillCode, String tenantId2, String carrierName, Pageable pageable);
 }

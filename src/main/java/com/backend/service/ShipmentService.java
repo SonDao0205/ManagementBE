@@ -20,16 +20,14 @@ public class ShipmentService {
     private final ShipmentRepository shipmentRepository;
 
     public Page<ShipmentResponse> list(String tenantId, String search, Pageable pageable) {
-        // If search is blank, list all; otherwise filter in-memory is avoided by fetching all then filtering.
-        // For production, a @Query with optional keyword would be added; here we use the base method.
-        Page<ShipmentEntity> page = shipmentRepository.findAllByTenantId(tenantId, pageable);
+        // Bug fix: search now actually filters by waybillCode or carrierName via DB query
         if (search != null && !search.isBlank()) {
-            String keyword = search.toLowerCase();
-            // Re-fetch without pageable is not ideal for large datasets; kept simple per spec.
-            return page.map(ShipmentResponse::from)
-                    .map(r -> r); // pass-through; filtering would require a @Query
+            return shipmentRepository
+                    .findAllByTenantIdAndWaybillCodeContainingIgnoreCaseOrTenantIdAndCarrierNameContainingIgnoreCase(
+                            tenantId, search, tenantId, search, pageable)
+                    .map(ShipmentResponse::from);
         }
-        return page.map(ShipmentResponse::from);
+        return shipmentRepository.findAllByTenantId(tenantId, pageable).map(ShipmentResponse::from);
     }
 
     public ShipmentResponse track(String tenantId, String code) {
@@ -42,11 +40,13 @@ public class ShipmentService {
     }
 
     public ShipmentOverviewResponse overview(String tenantId) {
-        long countWaiting = shipmentRepository.countByTenantIdAndMilestoneType(tenantId, "WAITING");
-        long countPicked = shipmentRepository.countByTenantIdAndMilestoneType(tenantId, "PICKED");
-        long countInTransit = shipmentRepository.countByTenantIdAndMilestoneType(tenantId, "IN_TRANSIT");
-        long countFailed = shipmentRepository.countByTenantIdAndMilestoneType(tenantId, "FAILED");
-        long countSuccess = shipmentRepository.countByTenantIdAndMilestoneType(tenantId, "SUCCESS");
+        // Bug fix: DB stores milestone_type in lowercase ('waiting','picked','transit','success','failed')
+        // Match DB CHECK constraint values exactly
+        long countWaiting   = shipmentRepository.countByTenantIdAndMilestoneType(tenantId, "waiting");
+        long countPicked    = shipmentRepository.countByTenantIdAndMilestoneType(tenantId, "picked");
+        long countInTransit = shipmentRepository.countByTenantIdAndMilestoneType(tenantId, "transit");
+        long countFailed    = shipmentRepository.countByTenantIdAndMilestoneType(tenantId, "failed");
+        long countSuccess   = shipmentRepository.countByTenantIdAndMilestoneType(tenantId, "success");
 
         return new ShipmentOverviewResponse(
                 countWaiting,
