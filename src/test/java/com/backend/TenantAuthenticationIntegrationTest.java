@@ -240,6 +240,32 @@ class TenantAuthenticationIntegrationTest {
     }
 
     @Test
+    void loginValidatesEmailAndPasswordBeforeAuthentication() throws Exception {
+        Csrf csrf = getCsrf();
+
+        mockMvc.perform(post("/api/auth/login")
+                        .cookie(csrf.cookie())
+                        .header("X-XSRF-TOKEN", csrf.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "email-khong-hop-le",
+                                  "password": "   "
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.fieldErrors.email")
+                        .value("Email không đúng định dạng."))
+                .andExpect(jsonPath("$.fieldErrors.password")
+                        .value("Vui lòng nhập mật khẩu."));
+
+        assertThat(jdbcClient.sql("SELECT COUNT(*) FROM login_sessions")
+                .query(Integer.class)
+                .single()).isZero();
+    }
+
+    @Test
     void meRejectsRevokedAndExpiredTenantSessions() throws Exception {
         Csrf csrf = getCsrf();
         MvcResult revokedLogin = mockMvc.perform(post("/api/auth/login")
