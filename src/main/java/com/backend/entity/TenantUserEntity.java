@@ -48,6 +48,9 @@ public class TenantUserEntity {
     @Column(name = "deleted_at")
     private Instant deletedAt;
 
+    @Column(name = "created_at", nullable = false)
+    private Instant createdAt = Instant.now();
+
     @OneToOne(mappedBy = "tenantUser", fetch = FetchType.LAZY, optional = false)
     private TenantUserCredentialEntity credential;
 }
