@@ -1,6 +1,7 @@
 package com.backend.marketplace;
 
 import java.net.http.HttpClient;
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -95,6 +96,96 @@ abstract class AbstractMockMarketplaceConnector implements MarketplaceConnector 
     }
 
     @Override
+    public ProductResult upsertProduct(String accessToken, ProductPayload product) {
+        try {
+            Map<String, Object> data = data(restClient.post()
+                    .uri("/mock/seller/products")
+                    .header("Authorization", "Bearer " + accessToken)
+                    .body(Map.of(
+                            "external_product_id", product.id(),
+                            "product_code", product.productCode(),
+                            "name", product.name(),
+                            "description", valueOrEmpty(product.description()),
+                            "category", valueOrEmpty(product.category()),
+                            "status", product.status(),
+                            "image_url", valueOrEmpty(product.imageUrl()),
+                            "variants", product.variants().stream()
+                                    .map(variant -> Map.of(
+                                            "external_variant_id", variant.id(),
+                                            "sku", variant.sku(),
+                                            "name", valueOrEmpty(variant.name()),
+                                            "price", variant.price(),
+                                            "stock", variant.stock()))
+                                    .toList()))
+                    .retrieve()
+                    .body(Map.class));
+            return new ProductResult(
+                    text(data, "external_product_id"),
+                    textOr(data, "status", "ACTIVE"),
+                    String.valueOf(data.getOrDefault("version", "1")),
+                    productVariantResults(data.get("variants")));
+        } catch (RestClientException | IllegalArgumentException exception) {
+            throw unavailable(
+                    "Không thể đồng bộ sản phẩm lên " + marketplaceCode + ".",
+                    exception);
+        }
+    }
+
+    @Override
+    public List<MarketplaceProductPayload> getProducts(String accessToken) {
+        try {
+            Map<String, Object> data = data(restClient.get()
+                    .uri("/mock/seller/products")
+                    .header("Authorization", "Bearer " + accessToken)
+                    .retrieve()
+                    .body(Map.class));
+            return marketplaceProductPayloads(data.get("products"));
+        } catch (RestClientException | IllegalArgumentException exception) {
+            throw unavailable(
+                    "Không thể đồng bộ sản phẩm từ " + marketplaceCode + ".",
+                    exception);
+        }
+    }
+
+    @Override
+    public List<OrderPayload> getOrders(String accessToken) {
+        try {
+            Map<String, Object> data = data(restClient.get()
+                    .uri("/mock/seller/orders")
+                    .header("Authorization", "Bearer " + accessToken)
+                    .retrieve()
+                    .body(Map.class));
+            return orderPayloads(data.get("orders"));
+        } catch (RestClientException | IllegalArgumentException exception) {
+            throw unavailable(
+                    "Không thể đồng bộ đơn hàng từ " + marketplaceCode + ".",
+                    exception);
+        }
+    }
+
+    @Override
+    public OrderPayload updateOrderStatus(
+            String accessToken,
+            String externalOrderId,
+            String canonicalStatus) {
+        try {
+            Map<String, Object> data = data(restClient.put()
+                    .uri("/mock/seller/orders/status")
+                    .header("Authorization", "Bearer " + accessToken)
+                    .body(Map.of(
+                            "order_id", externalOrderId,
+                            "canonical_status", canonicalStatus))
+                    .retrieve()
+                    .body(Map.class));
+            return orderPayload(data);
+        } catch (RestClientException | IllegalArgumentException exception) {
+            throw unavailable(
+                    "Không thể cập nhật trạng thái đơn hàng trên " + marketplaceCode + ".",
+                    exception);
+        }
+    }
+
+    @Override
     public void revoke(String token) {
         try {
             restClient.post()
@@ -170,6 +261,187 @@ abstract class AbstractMockMarketplaceConnector implements MarketplaceConnector 
             return List.of();
         }
         return list.stream().filter(String.class::isInstance).map(String.class::cast).toList();
+    }
+
+    private static List<ProductVariantResult> productVariantResults(Object value) {
+        if (!(value instanceof List<?> list)) {
+            return List.of();
+        }
+        return list.stream()
+                .filter(Map.class::isInstance)
+                .map(Map.class::cast)
+                .map(item -> {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> variant = (Map<String, Object>) item;
+                    return new ProductVariantResult(
+                            text(variant, "product_variant_id"),
+                            text(variant, "external_sku_id"),
+                            text(variant, "seller_sku"),
+                            decimal(variant, "price"),
+                            integer(variant, "stock"),
+                            textOr(variant, "status", "ACTIVE"));
+                })
+                .toList();
+    }
+
+    private static List<MarketplaceProductPayload> marketplaceProductPayloads(
+            Object value) {
+        if (!(value instanceof List<?> list)) {
+            return List.of();
+        }
+        return list.stream()
+                .filter(Map.class::isInstance)
+                .map(Map.class::cast)
+                .map(item -> {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> product = (Map<String, Object>) item;
+                    return new MarketplaceProductPayload(
+                            text(product, "external_product_id"),
+                            textOr(
+                                    product,
+                                    "product_code",
+                                    text(product, "external_product_id")),
+                            text(product, "name"),
+                            textOr(product, "description", ""),
+                            textOr(product, "category", ""),
+                            textOr(product, "status", "ACTIVE"),
+                            String.valueOf(product.getOrDefault("version", "1")),
+                            textOr(product, "image_url", ""),
+                            marketplaceProductVariantPayloads(
+                                    product.get("variants")));
+                })
+                .toList();
+    }
+
+    private static List<MarketplaceProductVariantPayload>
+            marketplaceProductVariantPayloads(Object value) {
+        if (!(value instanceof List<?> list)) {
+            return List.of();
+        }
+        return list.stream()
+                .filter(Map.class::isInstance)
+                .map(Map.class::cast)
+                .map(item -> {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> variant = (Map<String, Object>) item;
+                    return new MarketplaceProductVariantPayload(
+                            text(variant, "external_sku_id"),
+                            text(variant, "seller_sku"),
+                            textOr(variant, "name", ""),
+                            decimal(variant, "price"),
+                            integer(variant, "stock"),
+                            textOr(variant, "status", "ACTIVE"));
+                })
+                .toList();
+    }
+
+    private static List<OrderPayload> orderPayloads(Object value) {
+        if (!(value instanceof List<?> list)) {
+            return List.of();
+        }
+        return list.stream()
+                .filter(Map.class::isInstance)
+                .map(Map.class::cast)
+                .map(item -> {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> order = (Map<String, Object>) item;
+                    return orderPayload(order);
+                })
+                .toList();
+    }
+
+    private static OrderPayload orderPayload(Map<String, Object> order) {
+        return new OrderPayload(
+                text(order, "external_order_id"),
+                text(order, "raw_status"),
+                text(order, "canonical_status"),
+                textOr(order, "payment_status", "UNPAID"),
+                textOr(order, "currency", "VND"),
+                decimalOrZero(order, "subtotal_amount"),
+                decimalOrZero(order, "shipping_amount"),
+                decimalOrZero(order, "discount_amount"),
+                decimalOrZero(order, "total_amount"),
+                textOr(order, "customer_name", "Khách hàng"),
+                textOr(order, "customer_phone", ""),
+                mapValue(order.get("shipping_address")),
+                nullableText(order, "external_package_id"),
+                nullableText(order, "tracking_number"),
+                nullableText(order, "shipping_provider"),
+                instant(order, "created_at"),
+                instant(order, "updated_at"),
+                orderItemPayloads(order.get("items")));
+    }
+
+    private static List<OrderItemPayload> orderItemPayloads(Object value) {
+        if (!(value instanceof List<?> list)) {
+            return List.of();
+        }
+        return list.stream()
+                .filter(Map.class::isInstance)
+                .map(Map.class::cast)
+                .map(item -> {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> orderItem = (Map<String, Object>) item;
+                    return new OrderItemPayload(
+                            text(orderItem, "external_order_item_id"),
+                            textOr(orderItem, "external_product_id", ""),
+                            nullableText(orderItem, "external_sku_id"),
+                            nullableText(orderItem, "seller_sku"),
+                            text(orderItem, "product_name"),
+                            nullableText(orderItem, "variant_name"),
+                            integer(orderItem, "quantity"),
+                            decimalOrZero(orderItem, "unit_price"),
+                            decimalOrZero(orderItem, "discount_amount"),
+                            decimalOrZero(orderItem, "paid_amount"));
+                })
+                .toList();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> mapValue(Object value) {
+        return value instanceof Map<?, ?> map
+                ? (Map<String, Object>) map
+                : Map.of();
+    }
+
+    private static Instant instant(Map<String, Object> data, String key) {
+        String value = text(data, key);
+        try {
+            return Instant.parse(value);
+        } catch (RuntimeException exception) {
+            throw new IllegalArgumentException("Marketplace date is invalid: " + key, exception);
+        }
+    }
+
+    private static BigDecimal decimalOrZero(Map<String, Object> data, String key) {
+        Object value = data.get(key);
+        if (value == null) {
+            return BigDecimal.ZERO;
+        }
+        if (value instanceof Number number) {
+            return new BigDecimal(number.toString());
+        }
+        throw new IllegalArgumentException("Marketplace number is invalid: " + key);
+    }
+
+    private static BigDecimal decimal(Map<String, Object> data, String key) {
+        Object value = data.get(key);
+        if (value instanceof Number number) {
+            return new BigDecimal(number.toString());
+        }
+        throw new IllegalArgumentException("Marketplace number is missing: " + key);
+    }
+
+    private static int integer(Map<String, Object> data, String key) {
+        Object value = data.get(key);
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        throw new IllegalArgumentException("Marketplace number is missing: " + key);
+    }
+
+    private static String valueOrEmpty(String value) {
+        return value == null ? "" : value;
     }
 
     private static AuthenticationException unavailable(String message, Exception cause) {

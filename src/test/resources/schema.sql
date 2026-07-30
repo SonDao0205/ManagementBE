@@ -15,6 +15,7 @@ CREATE TABLE tenant_users (
   status VARCHAR(20) NOT NULL,
   last_login_at TIMESTAMP NULL,
   deleted_at TIMESTAMP NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_test_user_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id)
 );
 
@@ -48,7 +49,10 @@ CREATE TABLE roles (
   id VARCHAR(36) PRIMARY KEY,
   tenant_id VARCHAR(36) NULL,
   tenant_scope_key VARCHAR(36) NOT NULL,
-  role_code VARCHAR(50) NOT NULL
+  role_code VARCHAR(50) NOT NULL,
+  role_name VARCHAR(100) NOT NULL DEFAULT '',
+  description TEXT NULL,
+  is_system BOOLEAN NOT NULL DEFAULT FALSE
 );
 
 CREATE TABLE permissions (
@@ -67,6 +71,8 @@ CREATE TABLE tenant_user_roles (
   tenant_id VARCHAR(36) NOT NULL,
   role_id VARCHAR(36) NOT NULL,
   role_scope_key VARCHAR(36) NOT NULL,
+  assigned_by_user_id VARCHAR(36) NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (tenant_user_id, role_id)
 );
 
@@ -190,31 +196,95 @@ CREATE TABLE oauth_authorization_sessions (
 CREATE TABLE products (
   id VARCHAR(36) PRIMARY KEY,
   tenant_id VARCHAR(36) NOT NULL,
-  name VARCHAR(255) NOT NULL,
-  product_code VARCHAR(100) NULL,
-  category VARCHAR(100) NULL,
+  product_code VARCHAR(100) NOT NULL,
+  product_name VARCHAR(500) NOT NULL,
   description TEXT NULL,
-  price DECIMAL(15,2) NOT NULL DEFAULT 0,
-  cost_price DECIMAL(15,2) NOT NULL DEFAULT 0,
-  total_stock INT NOT NULL DEFAULT 0,
-  min_stock_alert INT NOT NULL DEFAULT 5,
-  image_url VARCHAR(500) NULL,
-  status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+  brand_name VARCHAR(255) NULL,
+  internal_category_code VARCHAR(100) NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'DRAFT',
+  attributes_json JSON NOT NULL,
+  version INT NOT NULL DEFAULT 1,
+  created_by_user_id VARCHAR(36) NULL,
   created_at TIMESTAMP NOT NULL,
   updated_at TIMESTAMP NOT NULL,
-  deleted_at TIMESTAMP NULL
+  deleted_at TIMESTAMP NULL,
+  UNIQUE (tenant_id, product_code)
 );
 
 CREATE TABLE product_variants (
   id VARCHAR(36) PRIMARY KEY,
-  product_id VARCHAR(36) NOT NULL,
   tenant_id VARCHAR(36) NOT NULL,
-  sku VARCHAR(100) NOT NULL,
-  variant_name VARCHAR(100) NULL,
-  price DECIMAL(15,2) NULL,
-  stock_quantity INT NOT NULL DEFAULT 0,
+  product_id VARCHAR(36) NOT NULL,
+  variant_code VARCHAR(100) NOT NULL,
+  seller_sku VARCHAR(200) NOT NULL,
+  variant_name VARCHAR(255) NULL,
+  attributes_json JSON NOT NULL,
+  price DECIMAL(18,2) NOT NULL,
+  compare_at_price DECIMAL(18,2) NULL,
+  currency VARCHAR(3) NOT NULL,
+  stock_on_hand INT NOT NULL,
+  reserved_stock INT NOT NULL,
+  status VARCHAR(20) NOT NULL,
+  version INT NOT NULL,
   created_at TIMESTAMP NOT NULL,
-  updated_at TIMESTAMP NOT NULL
+  updated_at TIMESTAMP NOT NULL,
+  deleted_at TIMESTAMP NULL,
+  UNIQUE (tenant_id, seller_sku)
+);
+
+CREATE TABLE product_media (
+  id VARCHAR(36) PRIMARY KEY,
+  tenant_id VARCHAR(36) NOT NULL,
+  product_id VARCHAR(36) NOT NULL,
+  product_variant_id VARCHAR(36) NULL,
+  media_type VARCHAR(20) NOT NULL,
+  storage_key VARCHAR(500) NOT NULL,
+  public_url TEXT NOT NULL,
+  checksum_sha256 VARCHAR(64) NULL,
+  sort_order INT NOT NULL,
+  is_primary BOOLEAN NOT NULL,
+  created_at TIMESTAMP NOT NULL,
+  deleted_at TIMESTAMP NULL
+);
+
+CREATE TABLE marketplace_products (
+  id VARCHAR(36) PRIMARY KEY,
+  tenant_id VARCHAR(36) NOT NULL,
+  product_id VARCHAR(36) NOT NULL,
+  marketplace_account_id VARCHAR(36) NOT NULL,
+  external_product_id VARCHAR(200) NOT NULL,
+  external_category_id VARCHAR(200) NULL,
+  external_title VARCHAR(500) NULL,
+  raw_status VARCHAR(100) NOT NULL,
+  canonical_status VARCHAR(30) NOT NULL,
+  sync_status VARCHAR(20) NOT NULL,
+  external_version VARCHAR(100) NULL,
+  raw_payload JSON NOT NULL,
+  last_synced_at TIMESTAMP NULL,
+  created_at TIMESTAMP NOT NULL,
+  updated_at TIMESTAMP NOT NULL,
+  deleted_at TIMESTAMP NULL,
+  UNIQUE (product_id, marketplace_account_id)
+);
+
+CREATE TABLE marketplace_product_variants (
+  id VARCHAR(36) PRIMARY KEY,
+  tenant_id VARCHAR(36) NOT NULL,
+  marketplace_product_id VARCHAR(36) NOT NULL,
+  product_variant_id VARCHAR(36) NOT NULL,
+  external_sku_id VARCHAR(200) NOT NULL,
+  external_seller_sku VARCHAR(200) NULL,
+  external_price DECIMAL(18,2) NULL,
+  external_stock INT NULL,
+  raw_status VARCHAR(100) NOT NULL,
+  canonical_status VARCHAR(30) NOT NULL,
+  sync_status VARCHAR(20) NOT NULL,
+  raw_payload JSON NOT NULL,
+  last_synced_at TIMESTAMP NULL,
+  created_at TIMESTAMP NOT NULL,
+  updated_at TIMESTAMP NOT NULL,
+  deleted_at TIMESTAMP NULL,
+  UNIQUE (marketplace_product_id, product_variant_id)
 );
 
 CREATE TABLE orders (

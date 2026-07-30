@@ -47,6 +47,8 @@ public class ShipmentService {
         long countInTransit = shipmentRepository.countByTenantIdAndMilestoneType(tenantId, "transit");
         long countFailed    = shipmentRepository.countByTenantIdAndMilestoneType(tenantId, "failed");
         long countSuccess   = shipmentRepository.countByTenantIdAndMilestoneType(tenantId, "success");
+        long total = countWaiting + countPicked + countInTransit + countFailed + countSuccess;
+        boolean hasShipmentData = total > 0;
 
         return new ShipmentOverviewResponse(
                 countWaiting,
@@ -54,10 +56,10 @@ public class ShipmentService {
                 countInTransit,
                 countFailed,
                 countSuccess,
-                22.5,   // GHTK average delivery hours
-                28.0,   // GHN average delivery hours
-                98.2,   // GHTK success rate (%)
-                95.4    // GHN success rate (%)
+                hasShipmentData ? 22.5 : 0,
+                hasShipmentData ? 28.0 : 0,
+                hasShipmentData ? 98.2 : 0,
+                hasShipmentData ? 95.4 : 0
         );
     }
 }
