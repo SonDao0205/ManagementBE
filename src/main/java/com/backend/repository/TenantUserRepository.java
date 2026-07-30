@@ -67,4 +67,19 @@ public interface TenantUserRepository extends JpaRepository<TenantUserEntity, St
     List<String> findPermissionCodes(
             @Param("userId") String userId,
             @Param("tenantId") String tenantId);
+
+    @Query("""
+            select u from TenantUserEntity u
+            join TenantUserRoleEntity tur on tur.tenantUserId = u.id
+            join RoleEntity r on r.id = tur.roleId
+            where u.tenant.id = :tenantId
+              and u.deletedAt is null
+              and r.roleCode = 'CS_AGENT'
+            order by u.id desc
+            """)
+    List<TenantUserEntity> findStaffByTenantId(@Param("tenantId") String tenantId);
+
+    boolean existsByEmail(String email);
+
+    Optional<TenantUserEntity> findByEmail(String email);
 }

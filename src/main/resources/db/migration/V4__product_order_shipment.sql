@@ -4,7 +4,7 @@
 -- ─────────────────────────────────────────────────────────────
 -- products
 -- ─────────────────────────────────────────────────────────────
-CREATE TABLE products (
+CREATE TABLE IF NOT EXISTS products (
     id           CHAR(36)       NOT NULL,
     tenant_id    CHAR(36)       NOT NULL,
     name         VARCHAR(255)   NOT NULL,
@@ -29,7 +29,7 @@ CREATE TABLE products (
 -- ─────────────────────────────────────────────────────────────
 -- product_variants
 -- ─────────────────────────────────────────────────────────────
-CREATE TABLE product_variants (
+CREATE TABLE IF NOT EXISTS product_variants (
     id             CHAR(36)      NOT NULL,
     product_id     CHAR(36)      NOT NULL,
     tenant_id      CHAR(36)      NOT NULL,
@@ -48,7 +48,7 @@ CREATE TABLE product_variants (
 -- ─────────────────────────────────────────────────────────────
 -- orders
 -- ─────────────────────────────────────────────────────────────
-CREATE TABLE orders (
+CREATE TABLE IF NOT EXISTS orders (
     id                    CHAR(36)      NOT NULL,
     tenant_id             CHAR(36)      NOT NULL,
     order_code            VARCHAR(50)   NOT NULL,
@@ -78,7 +78,7 @@ CREATE TABLE orders (
 -- ─────────────────────────────────────────────────────────────
 -- order_items
 -- ─────────────────────────────────────────────────────────────
-CREATE TABLE order_items (
+CREATE TABLE IF NOT EXISTS order_items (
     id           CHAR(36)      NOT NULL,
     order_id     CHAR(36)      NOT NULL,
     tenant_id    CHAR(36)      NOT NULL,
@@ -96,7 +96,7 @@ CREATE TABLE order_items (
 -- ─────────────────────────────────────────────────────────────
 -- shipments
 -- ─────────────────────────────────────────────────────────────
-CREATE TABLE shipments (
+CREATE TABLE IF NOT EXISTS shipments (
     id                CHAR(36)      NOT NULL,
     tenant_id         CHAR(36)      NOT NULL,
     order_id          CHAR(36)      NULL,
