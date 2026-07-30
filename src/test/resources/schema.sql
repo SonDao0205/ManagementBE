@@ -186,3 +186,79 @@ CREATE TABLE oauth_authorization_sessions (
   CONSTRAINT fk_test_oauth_marketplace
     FOREIGN KEY (marketplace_id) REFERENCES marketplaces(id)
 );
+
+CREATE TABLE products (
+  id VARCHAR(36) PRIMARY KEY,
+  tenant_id VARCHAR(36) NOT NULL,
+  name VARCHAR(255) NOT NULL,
+  product_code VARCHAR(100) NULL,
+  category VARCHAR(100) NULL,
+  description TEXT NULL,
+  price DECIMAL(15,2) NOT NULL DEFAULT 0,
+  cost_price DECIMAL(15,2) NOT NULL DEFAULT 0,
+  total_stock INT NOT NULL DEFAULT 0,
+  min_stock_alert INT NOT NULL DEFAULT 5,
+  image_url VARCHAR(500) NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+  created_at TIMESTAMP NOT NULL,
+  updated_at TIMESTAMP NOT NULL,
+  deleted_at TIMESTAMP NULL
+);
+
+CREATE TABLE product_variants (
+  id VARCHAR(36) PRIMARY KEY,
+  product_id VARCHAR(36) NOT NULL,
+  tenant_id VARCHAR(36) NOT NULL,
+  sku VARCHAR(100) NOT NULL,
+  variant_name VARCHAR(100) NULL,
+  price DECIMAL(15,2) NULL,
+  stock_quantity INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMP NOT NULL,
+  updated_at TIMESTAMP NOT NULL
+);
+
+CREATE TABLE orders (
+  id VARCHAR(36) PRIMARY KEY,
+  tenant_id VARCHAR(36) NOT NULL,
+  order_code VARCHAR(50) NOT NULL,
+  external_order_id VARCHAR(100) NULL,
+  marketplace VARCHAR(50) NOT NULL DEFAULT 'MANUAL',
+  customer_name VARCHAR(255) NOT NULL,
+  customer_phone VARCHAR(30) NULL,
+  shipping_address_json JSON NULL,
+  total_amount DECIMAL(15,2) NOT NULL DEFAULT 0,
+  discount_amount DECIMAL(15,2) NOT NULL DEFAULT 0,
+  final_amount DECIMAL(15,2) NOT NULL DEFAULT 0,
+  payment_status VARCHAR(20) NOT NULL DEFAULT 'COD',
+  status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+  created_at TIMESTAMP NOT NULL,
+  updated_at TIMESTAMP NOT NULL,
+  deleted_at TIMESTAMP NULL
+);
+
+CREATE TABLE order_items (
+  id VARCHAR(36) PRIMARY KEY,
+  order_id VARCHAR(36) NOT NULL,
+  tenant_id VARCHAR(36) NOT NULL,
+  product_name VARCHAR(255) NOT NULL,
+  sku VARCHAR(100) NULL,
+  variant_name VARCHAR(100) NULL,
+  price DECIMAL(15,2) NOT NULL,
+  quantity INT NOT NULL DEFAULT 1
+);
+
+CREATE TABLE shipments (
+  id VARCHAR(36) PRIMARY KEY,
+  tenant_id VARCHAR(36) NOT NULL,
+  order_id VARCHAR(36) NULL,
+  waybill_code VARCHAR(100) NOT NULL,
+  carrier_name VARCHAR(100) NULL,
+  destination VARCHAR(255) NULL,
+  cod_amount DECIMAL(15,2) NOT NULL DEFAULT 0,
+  latest_milestone VARCHAR(255) NULL,
+  milestone_type VARCHAR(20) NOT NULL DEFAULT 'waiting',
+  shipped_at TIMESTAMP NULL,
+  delivered_at TIMESTAMP NULL,
+  created_at TIMESTAMP NOT NULL,
+  updated_at TIMESTAMP NOT NULL
+);
