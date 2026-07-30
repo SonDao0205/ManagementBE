@@ -52,3 +52,29 @@ dependencies {
 tasks.named('test') {
     useJUnitPlatform()
 }
+
+tasks.register('cleanFlywayHistory') {
+    doLast {
+        def url = 'jdbc:mysql://localhost:3306/omnichannel_pos?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true'
+        def user = 'root'
+        def password = 'admin123'
+        def driver = 'com.mysql.cj.jdbc.Driver'
+        
+        def jarFile = configurations.runtimeClasspath.find { it.name.contains('mysql-connector-j') }
+        if (jarFile) {
+            def classLoader = new URLClassLoader([jarFile.toURI().toURL()] as URL[], this.class.classLoader)
+            def driverClass = classLoader.loadClass(driver)
+            def props = new Properties()
+            props.setProperty("user", user)
+            props.setProperty("password", password)
+            def conn = driverClass.getDeclaredConstructor().newInstance().connect(url, props)
+            def stmt = conn.createStatement()
+            int deleted = stmt.executeUpdate("DELETE FROM flyway_schema_history WHERE success = 0")
+            println "Successfully deleted ${deleted} failed entries from flyway_schema_history."
+            stmt.close()
+            conn.close()
+        } else {
+            println "Could not find mysql-connector-j jar in runtimeClasspath."
+        }
+    }
+}
