@@ -33,7 +33,7 @@ public class ApiExceptionHandler {
     ResponseEntity<ProblemDetail> handleValidation(MethodArgumentNotValidException exception) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(
                 HttpStatus.BAD_REQUEST,
-                "Dữ liệu đăng nhập không hợp lệ.");
+                "Dữ liệu yêu cầu không hợp lệ.");
         problem.setTitle("Validation failed");
         problem.setType(URI.create("urn:omnichannel:problem:validation_failed"));
         problem.setProperty("code", "VALIDATION_FAILED");
