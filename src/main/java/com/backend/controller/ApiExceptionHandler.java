@@ -38,10 +38,23 @@ public class ApiExceptionHandler {
         problem.setType(URI.create("urn:omnichannel:problem:validation_failed"));
         problem.setProperty("code", "VALIDATION_FAILED");
         Map<String, String> fieldErrors = new LinkedHashMap<>();
-        exception.getBindingResult().getFieldErrors().forEach(error ->
-                fieldErrors.putIfAbsent(error.getField(), error.getDefaultMessage()));
+        exception.getBindingResult().getFieldErrors().stream()
+                .sorted((left, right) -> Integer.compare(
+                        validationPriority(left.getCode()),
+                        validationPriority(right.getCode())))
+                .forEach(error ->
+                        fieldErrors.putIfAbsent(error.getField(), error.getDefaultMessage()));
         problem.setProperty("fieldErrors", fieldErrors);
         return ResponseEntity.badRequest().body(problem);
+    }
+
+    private int validationPriority(String validationCode) {
+        return switch (validationCode == null ? "" : validationCode) {
+            case "NotBlank", "NotNull" -> 0;
+            case "Size" -> 1;
+            case "Email", "Pattern" -> 2;
+            default -> 3;
+        };
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)
