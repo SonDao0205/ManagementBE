@@ -15,6 +15,8 @@ public interface OrderRepository extends JpaRepository<OrderEntity, String> {
 
     Page<OrderEntity> findAllByTenantIdAndDeletedAtIsNull(String tenantId, Pageable pageable);
 
+    java.util.List<OrderEntity> findAllByTenantIdAndDeletedAtIsNull(String tenantId);
+
     Optional<OrderEntity> findByIdAndTenantIdAndDeletedAtIsNull(String id, String tenantId);
 
     Page<OrderEntity> findAllByTenantIdAndStatusAndDeletedAtIsNull(String tenantId, String status, Pageable pageable);

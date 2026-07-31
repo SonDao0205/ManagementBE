@@ -14,6 +14,8 @@ public interface ProductRepository extends JpaRepository<ProductEntity, String> 
 
     Page<ProductEntity> findAllByTenantIdAndDeletedAtIsNull(String tenantId, Pageable pageable);
 
+    java.util.List<ProductEntity> findAllByTenantIdAndDeletedAtIsNull(String tenantId);
+
     Optional<ProductEntity> findByIdAndTenantIdAndDeletedAtIsNull(String id, String tenantId);
 
     @Query("""

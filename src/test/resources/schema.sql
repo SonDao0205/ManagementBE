@@ -15,6 +15,7 @@ CREATE TABLE tenant_users (
   status VARCHAR(20) NOT NULL,
   last_login_at TIMESTAMP NULL,
   deleted_at TIMESTAMP NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_test_user_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id)
 );
 
@@ -48,7 +49,10 @@ CREATE TABLE roles (
   id VARCHAR(36) PRIMARY KEY,
   tenant_id VARCHAR(36) NULL,
   tenant_scope_key VARCHAR(36) NOT NULL,
-  role_code VARCHAR(50) NOT NULL
+  role_code VARCHAR(50) NOT NULL,
+  role_name VARCHAR(100) NOT NULL DEFAULT 'Role',
+  description TEXT NULL,
+  is_system BOOLEAN NOT NULL DEFAULT FALSE
 );
 
 CREATE TABLE permissions (
@@ -67,6 +71,8 @@ CREATE TABLE tenant_user_roles (
   tenant_id VARCHAR(36) NOT NULL,
   role_id VARCHAR(36) NOT NULL,
   role_scope_key VARCHAR(36) NOT NULL,
+  assigned_by_user_id VARCHAR(36) NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (tenant_user_id, role_id)
 );
 
@@ -261,4 +267,80 @@ CREATE TABLE shipments (
   delivered_at TIMESTAMP NULL,
   created_at TIMESTAMP NOT NULL,
   updated_at TIMESTAMP NOT NULL
+);
+
+CREATE TABLE customers (
+  id VARCHAR(36) PRIMARY KEY,
+  tenant_id VARCHAR(36) NOT NULL,
+  customer_code VARCHAR(100) NOT NULL,
+  display_name VARCHAR(255) NULL,
+  phone_normalized_encrypted TEXT NULL,
+  email_normalized_encrypted TEXT NULL,
+  phone_lookup_hmac VARCHAR(64) NULL,
+  email_lookup_hmac VARCHAR(64) NULL,
+  pii_key_version VARCHAR(30) NULL,
+  identity_status VARCHAR(20) NOT NULL DEFAULT 'UNVERIFIED',
+  merged_into_id VARCHAR(36) NULL,
+  created_at TIMESTAMP NOT NULL,
+  updated_at TIMESTAMP NOT NULL,
+  deleted_at TIMESTAMP NULL,
+  CONSTRAINT fk_test_customers_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+  CONSTRAINT fk_test_customers_merged_into FOREIGN KEY (merged_into_id) REFERENCES customers(id)
+);
+
+CREATE TABLE marketplace_customers (
+  id VARCHAR(36) PRIMARY KEY,
+  tenant_id VARCHAR(36) NOT NULL,
+  marketplace_account_id VARCHAR(36) NOT NULL,
+  external_customer_id VARCHAR(200) NOT NULL,
+  external_im_user_id VARCHAR(200) NULL,
+  display_name VARCHAR(255) NULL,
+  avatar_url TEXT NULL,
+  phone_masked VARCHAR(100) NULL,
+  email_masked VARCHAR(255) NULL,
+  raw_payload JSON NOT NULL,
+  first_seen_at TIMESTAMP NOT NULL,
+  last_seen_at TIMESTAMP NOT NULL,
+  created_at TIMESTAMP NOT NULL,
+  updated_at TIMESTAMP NOT NULL,
+  CONSTRAINT fk_test_mp_cust_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+  CONSTRAINT fk_test_mp_cust_account FOREIGN KEY (marketplace_account_id) REFERENCES marketplace_accounts(id),
+  CONSTRAINT uq_mp_cust_id_tenant UNIQUE (id, tenant_id)
+);
+
+CREATE TABLE customer_identity_links (
+  id VARCHAR(36) PRIMARY KEY,
+  tenant_id VARCHAR(36) NOT NULL,
+  customer_id VARCHAR(36) NOT NULL,
+  marketplace_customer_id VARCHAR(36) NOT NULL,
+  link_method VARCHAR(30) NOT NULL,
+  verification_status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+  verified_by_user_id VARCHAR(36) NULL,
+  verified_at TIMESTAMP NULL,
+  evidence_json JSON NOT NULL,
+  created_at TIMESTAMP NOT NULL,
+  CONSTRAINT fk_test_id_link_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+  CONSTRAINT fk_test_id_link_customer FOREIGN KEY (customer_id) REFERENCES customers(id),
+  CONSTRAINT fk_test_id_link_mp_customer FOREIGN KEY (marketplace_customer_id) REFERENCES marketplace_customers(id),
+  CONSTRAINT fk_test_id_link_verifier FOREIGN KEY (verified_by_user_id) REFERENCES tenant_users(id)
+);
+
+CREATE TABLE customer_behavior_events (
+  event_id VARCHAR(100) NOT NULL,
+  marketplace_account_id VARCHAR(36) NOT NULL,
+  tenant_id VARCHAR(36) NOT NULL,
+  marketplace_customer_id VARCHAR(36) NOT NULL,
+  source_session_id VARCHAR(100) NULL,
+  marketplace_code VARCHAR(30) NOT NULL,
+  event_name VARCHAR(50) NOT NULL,
+  screen VARCHAR(100) NULL,
+  entity_type VARCHAR(50) NULL,
+  entity_external_id VARCHAR(200) NULL,
+  properties_json JSON NOT NULL,
+  occurred_at TIMESTAMP NOT NULL,
+  received_at TIMESTAMP NOT NULL,
+  PRIMARY KEY (marketplace_account_id, event_id),
+  CONSTRAINT fk_test_behav_event_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+  CONSTRAINT fk_test_behav_event_account FOREIGN KEY (marketplace_account_id) REFERENCES marketplace_accounts(id),
+  CONSTRAINT fk_test_behav_event_mp_customer FOREIGN KEY (marketplace_customer_id) REFERENCES marketplace_customers(id)
 );
