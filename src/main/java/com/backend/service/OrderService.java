@@ -23,6 +23,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.backend.dto.OrderResponse;
 import com.backend.dto.OrderResponse.OrderItemResponse;
+import com.backend.dto.OrderCreateRequest;
+import com.backend.dto.OrderCreateRequest.OrderCreateItemRequest;
 import com.backend.dto.OrderSyncResponse;
 import com.backend.entity.MarketplaceAccountEntity;
 import com.backend.entity.MarketplaceCredentialEntity;
@@ -207,12 +209,150 @@ public class OrderService {
                 errors);
     }
 
+    public OrderResponse create(
+            TenantPrincipal principal,
+            OrderCreateRequest request) {
+        MarketplaceAccountEntity storageAccount = accountRepository
+                .findByTenantIdAndDeletedAtIsNullOrderByCreatedAtDesc(principal.tenantId())
+                .stream()
+                .findFirst()
+                .orElseThrow(() -> problem(
+                        HttpStatus.CONFLICT,
+                        "MANUAL_ORDER_REQUIRES_ACCOUNT",
+                        "Cần có ít nhất một gian hàng đã kết nối để lưu đơn tạo tay."));
+
+        BigDecimal subtotal = request.items().stream()
+                .map(item -> item.price().multiply(BigDecimal.valueOf(item.quantity())))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal discount = request.discountAmount();
+        if (discount.compareTo(subtotal) > 0) {
+            throw problem(
+                    HttpStatus.BAD_REQUEST,
+                    "DISCOUNT_EXCEEDS_SUBTOTAL",
+                    "Giảm giá không được lớn hơn tiền hàng.");
+        }
+
+        String addressJson = normalizeAddressJson(request.shippingAddressJson());
+        String paymentStatus = "PAID".equals(request.paymentStatus()) ? "PAID" : "UNPAID";
+        BigDecimal finalAmount = subtotal.subtract(discount);
+        String orderId = UUID.randomUUID().toString();
+        String externalOrderId = "MANUAL-" + UUID.randomUUID();
+        String orderCode = "DH-" + Instant.now().toEpochMilli()
+                + "-" + UUID.randomUUID().toString().substring(0, 6).toUpperCase(Locale.ROOT);
+        Instant now = Instant.now();
+        Timestamp timestamp = Timestamp.from(now);
+
+        jdbcTemplate.update(
+                """
+                INSERT INTO orders (
+                  id, tenant_id, marketplace_account_id, external_order_id,
+                  raw_status, canonical_status, payment_status, refund_status,
+                  currency, subtotal_amount, shipping_amount, discount_amount,
+                  tax_amount, total_amount, shipping_address_json,
+                  billing_address_json, raw_payload, external_created_at,
+                  external_updated_at, last_synced_at, version, created_at,
+                  updated_at, order_code, customer_name, customer_phone,
+                  final_amount, marketplace, status
+                ) VALUES (
+                  ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                  JSON_OBJECT(), JSON_OBJECT('source', 'MANUAL'), ?, ?, ?, 1,
+                  ?, ?, ?, ?, ?, ?, ?, ?
+                )
+                """,
+                orderId,
+                principal.tenantId(),
+                storageAccount.getId(),
+                externalOrderId,
+                "CREATED",
+                "CREATED",
+                paymentStatus,
+                "NONE",
+                "VND",
+                subtotal,
+                BigDecimal.ZERO,
+                discount,
+                BigDecimal.ZERO,
+                subtotal,
+                addressJson,
+                timestamp,
+                timestamp,
+                timestamp,
+                timestamp,
+                timestamp,
+                orderCode,
+                request.customerName().trim(),
+                emptyToNull(request.customerPhone()),
+                finalAmount,
+                "MANUAL",
+                "PENDING");
+
+        int itemIndex = 0;
+        for (OrderCreateItemRequest item : request.items()) {
+            itemIndex++;
+            BigDecimal lineAmount = item.price().multiply(BigDecimal.valueOf(item.quantity()));
+            String sku = emptyToNull(item.sku());
+            jdbcTemplate.update(
+                    """
+                    INSERT INTO order_items (
+                      id, tenant_id, order_id, external_order_item_id,
+                      external_product_id, external_sku_id, seller_sku_snapshot,
+                      product_name_snapshot, variant_name_snapshot, quantity,
+                      unit_price, discount_amount, paid_amount, currency,
+                      raw_status, canonical_status, raw_payload, created_at,
+                      updated_at, product_name, sku, variant_name, price
+                    ) VALUES (
+                      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 'VND',
+                      'CREATED', 'CREATED', JSON_OBJECT('source', 'MANUAL'),
+                      ?, ?, ?, ?, ?, ?
+                    )
+                    """,
+                    UUID.randomUUID().toString(),
+                    principal.tenantId(),
+                    orderId,
+                    "MANUAL-ITEM-" + UUID.randomUUID(),
+                    "MANUAL-PRODUCT-" + itemIndex,
+                    sku,
+                    sku,
+                    item.productName().trim(),
+                    emptyToNull(item.variantName()),
+                    item.quantity(),
+                    item.price(),
+                    lineAmount,
+                    timestamp,
+                    timestamp,
+                    item.productName().trim(),
+                    sku,
+                    emptyToNull(item.variantName()),
+                    item.price());
+        }
+
+        jdbcTemplate.update(
+                """
+                INSERT INTO order_status_history (
+                  id, tenant_id, order_id, from_raw_status, to_raw_status,
+                  from_canonical_status, to_canonical_status, source,
+                  external_event_id, changed_by_user_id, occurred_at, created_at
+                ) VALUES (?, ?, ?, NULL, 'CREATED', NULL, 'CREATED', 'USER_ACTION', ?, ?, ?, ?)
+                """,
+                UUID.randomUUID().toString(),
+                principal.tenantId(),
+                orderId,
+                "MANUAL-CREATE-" + UUID.randomUUID(),
+                principal.userId(),
+                timestamp,
+                timestamp);
+        return get(principal.tenantId(), orderId);
+    }
+
     public OrderResponse updateStatus(
             TenantPrincipal principal,
             String orderId,
             String requestedStatus) {
         String uiStatus = normalizeUiStatus(requestedStatus, true);
         LocalOrder localOrder = requireLocalOrder(principal.tenantId(), orderId);
+        if ("MANUAL".equals(localOrder.marketplace())) {
+            return updateManualOrderStatus(principal, orderId, localOrder, uiStatus);
+        }
         MarketplaceAccountEntity account = accountRepository
                 .findByIdAndTenantIdAndDeletedAtIsNull(
                         localOrder.marketplaceAccountId(),
@@ -235,6 +375,60 @@ public class OrderService {
                 updated,
                 "USER_ACTION",
                 principal.userId());
+        return get(principal.tenantId(), orderId);
+    }
+
+    private OrderResponse updateManualOrderStatus(
+            TenantPrincipal principal,
+            String orderId,
+            LocalOrder localOrder,
+            String uiStatus) {
+        String canonicalStatus = canonicalStatus(uiStatus);
+        Timestamp now = Timestamp.from(Instant.now());
+        jdbcTemplate.update(
+                """
+                UPDATE orders SET raw_status = ?, canonical_status = ?, status = ?,
+                  external_updated_at = ?, last_synced_at = ?, updated_at = ?,
+                  version = version + 1
+                WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL
+                """,
+                canonicalStatus,
+                canonicalStatus,
+                uiStatus,
+                now,
+                now,
+                now,
+                orderId,
+                principal.tenantId());
+        jdbcTemplate.update(
+                """
+                UPDATE order_items SET raw_status = ?, canonical_status = ?, updated_at = ?
+                WHERE order_id = ? AND tenant_id = ?
+                """,
+                canonicalStatus,
+                canonicalStatus,
+                now,
+                orderId,
+                principal.tenantId());
+        jdbcTemplate.update(
+                """
+                INSERT INTO order_status_history (
+                  id, tenant_id, order_id, from_raw_status, to_raw_status,
+                  from_canonical_status, to_canonical_status, source,
+                  external_event_id, changed_by_user_id, occurred_at, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'USER_ACTION', ?, ?, ?, ?)
+                """,
+                UUID.randomUUID().toString(),
+                principal.tenantId(),
+                orderId,
+                localOrder.canonicalStatus(),
+                canonicalStatus,
+                localOrder.canonicalStatus(),
+                canonicalStatus,
+                "MANUAL-STATUS-" + UUID.randomUUID(),
+                principal.userId(),
+                now,
+                now);
         return get(principal.tenantId(), orderId);
     }
 
@@ -551,13 +745,16 @@ public class OrderService {
         try {
             return jdbcTemplate.queryForObject(
                     """
-                    SELECT marketplace_account_id, external_order_id
+                    SELECT marketplace_account_id, external_order_id, marketplace,
+                           canonical_status
                     FROM orders
                     WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL
                     """,
                     (rows, rowNumber) -> new LocalOrder(
                             rows.getString("marketplace_account_id"),
-                            rows.getString("external_order_id")),
+                            rows.getString("external_order_id"),
+                            rows.getString("marketplace"),
+                            rows.getString("canonical_status")),
                     orderId,
                     tenantId);
         } catch (EmptyResultDataAccessException exception) {
@@ -606,6 +803,21 @@ public class OrderService {
             return objectMapper.writeValueAsString(value == null ? Map.of() : value);
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("Cannot serialize order address", exception);
+        }
+    }
+
+    private String normalizeAddressJson(String value) {
+        try {
+            var parsed = objectMapper.readTree(value);
+            if (!parsed.isObject()) {
+                throw new IllegalArgumentException("Address must be a JSON object");
+            }
+            return objectMapper.writeValueAsString(parsed);
+        } catch (JsonProcessingException | IllegalArgumentException exception) {
+            throw problem(
+                    HttpStatus.BAD_REQUEST,
+                    "INVALID_SHIPPING_ADDRESS",
+                    "Địa chỉ giao hàng không hợp lệ.");
         }
     }
 
@@ -700,6 +912,10 @@ public class OrderService {
         return value == null || value.isBlank() ? fallback : value;
     }
 
+    private static String emptyToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
+    }
+
     private static String safeMessage(RuntimeException exception) {
         return exception.getMessage() == null
                 ? exception.getClass().getSimpleName()
@@ -716,6 +932,10 @@ public class OrderService {
     private record ExistingOrder(String id, String rawStatus, String canonicalStatus) {
     }
 
-    private record LocalOrder(String marketplaceAccountId, String externalOrderId) {
+    private record LocalOrder(
+            String marketplaceAccountId,
+            String externalOrderId,
+            String marketplace,
+            String canonicalStatus) {
     }
 }

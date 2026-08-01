@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.backend.dto.OrderResponse;
+import com.backend.dto.OrderCreateRequest;
 import com.backend.dto.OrderStatusUpdateRequest;
 import com.backend.dto.OrderSyncResponse;
 import com.backend.security.TenantPrincipal;
@@ -56,6 +57,13 @@ public class OrderController {
             @AuthenticationPrincipal TenantPrincipal principal,
             @PathVariable String orderId) {
         return orderService.get(principal.tenantId(), orderId);
+    }
+
+    @PostMapping
+    public OrderResponse create(
+            @AuthenticationPrincipal TenantPrincipal principal,
+            @Valid @RequestBody OrderCreateRequest request) {
+        return orderService.create(principal, request);
     }
 
     @PostMapping("/sync")

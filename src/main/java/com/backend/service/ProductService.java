@@ -220,6 +220,15 @@ public class ProductService {
                     "Sản phẩm chưa có SKU để điều chỉnh tồn kho.");
         }
         ProductVariantEntity variant = variants.get(0);
+        if (request.variantId() != null && !request.variantId().isBlank()) {
+            variant = variants.stream()
+                    .filter(item -> item.getId().equals(request.variantId().trim()))
+                    .findFirst()
+                    .orElseThrow(() -> problem(
+                            HttpStatus.NOT_FOUND,
+                            "PRODUCT_VARIANT_NOT_FOUND",
+                            "Không tìm thấy SKU thuộc sản phẩm này."));
+        }
         int newStock = variant.getStockOnHand() + request.delta();
         if (newStock < 0) {
             throw problem(

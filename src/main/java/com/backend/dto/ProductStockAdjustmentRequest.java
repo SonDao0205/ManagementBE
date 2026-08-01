@@ -4,5 +4,6 @@ import jakarta.validation.constraints.NotNull;
 
 public record ProductStockAdjustmentRequest(
         @NotNull Integer delta,
-        String note) {
+        String note,
+        String variantId) {
 }
