@@ -28,14 +28,14 @@ public class MarketplaceCredentialEntity {
     @Column(name = "app_key", length = 150)
     private String appKey;
 
-    @Column(name = "access_token_encrypted", nullable = false, columnDefinition = "MEDIUMTEXT")
+    @Column(name = "access_token_encrypted", nullable = false, columnDefinition = "TEXT")
     private String accessTokenEncrypted;
 
-    @Column(name = "refresh_token_encrypted", columnDefinition = "MEDIUMTEXT")
+    @Column(name = "refresh_token_encrypted", columnDefinition = "TEXT")
     private String refreshTokenEncrypted;
 
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "scopes_json", nullable = false, columnDefinition = "json")
+    @Column(name = "scopes_json", nullable = false, columnDefinition = "jsonb")
     private String scopesJson;
 
     @Column(name = "encryption_key_version", nullable = false, length = 30)

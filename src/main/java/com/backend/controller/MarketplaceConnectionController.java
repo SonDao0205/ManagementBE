@@ -20,8 +20,11 @@ import org.springframework.web.bind.annotation.RestController;
 import com.backend.dto.MarketplaceAuthorizationResponse;
 import com.backend.dto.MarketplaceAuthorizeRequest;
 import com.backend.dto.MarketplaceConnectionResponse;
+import com.backend.dto.MarketplaceSyncResponse;
+import com.backend.dto.MarketplaceSyncRequest;
 import com.backend.security.TenantPrincipal;
 import com.backend.service.MarketplaceConnectionService;
+import com.backend.service.MarketplaceSyncService;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -33,10 +36,13 @@ import jakarta.validation.Valid;
 public class MarketplaceConnectionController {
 
     private final MarketplaceConnectionService connectionService;
+    private final MarketplaceSyncService syncService;
 
     public MarketplaceConnectionController(
-            MarketplaceConnectionService connectionService) {
+            MarketplaceConnectionService connectionService,
+            MarketplaceSyncService syncService) {
         this.connectionService = connectionService;
+        this.syncService = syncService;
     }
 
     @GetMapping
@@ -95,6 +101,26 @@ public class MarketplaceConnectionController {
             @AuthenticationPrincipal TenantPrincipal principal,
             @PathVariable String accountId) {
         return connectionService.refresh(principal, accountId);
+    }
+
+    @PostMapping("/sync")
+    @PreAuthorize("hasAuthority('SESSION_AUTHENTICATED')")
+    @Operation(summary = "Đồng bộ sản phẩm và đơn hàng từ toàn bộ shop đã liên kết")
+    public MarketplaceSyncResponse syncAll(
+            @AuthenticationPrincipal TenantPrincipal principal,
+            @RequestBody(required = false) MarketplaceSyncRequest request) {
+        return request == null
+                ? syncService.syncTenant(principal.tenantId())
+                : syncService.syncTenant(principal.tenantId(), request);
+    }
+
+    @PostMapping("/{accountId}/sync")
+    @PreAuthorize("hasAuthority('SESSION_AUTHENTICATED')")
+    @Operation(summary = "Đồng bộ sản phẩm và đơn hàng từ một shop đã liên kết")
+    public MarketplaceSyncResponse syncAccount(
+            @AuthenticationPrincipal TenantPrincipal principal,
+            @PathVariable String accountId) {
+        return syncService.syncAccount(principal.tenantId(), accountId);
     }
 
     @DeleteMapping("/{accountId}")

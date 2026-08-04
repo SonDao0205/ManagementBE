@@ -8,5 +8,7 @@ public record StockAdjustmentRequest(
         @NotNull
         Integer delta,
 
+        String variantId,
+
         String note) {
 }

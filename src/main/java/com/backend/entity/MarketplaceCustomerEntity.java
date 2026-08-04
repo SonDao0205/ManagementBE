@@ -54,7 +54,7 @@ public class MarketplaceCustomerEntity {
     @Column(name = "email_masked", length = 255)
     private String emailMasked;
 
-    @Column(name = "raw_payload", columnDefinition = "json", nullable = false)
+    @Column(name = "raw_payload", columnDefinition = "jsonb", nullable = false)
     private String rawPayload = "{}";
 
     @Column(name = "first_seen_at", nullable = false)

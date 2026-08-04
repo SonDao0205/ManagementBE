@@ -59,7 +59,7 @@ public class CustomerIdentityLinkEntity {
     @Column(name = "verified_at")
     private Instant verifiedAt;
 
-    @Column(name = "evidence_json", columnDefinition = "json", nullable = false)
+    @Column(name = "evidence_json", columnDefinition = "jsonb", nullable = false)
     private String evidenceJson = "{}";
 
     @Column(name = "created_at", nullable = false)

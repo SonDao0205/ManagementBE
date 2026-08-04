@@ -2,6 +2,7 @@ package com.backend.marketplace;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 public interface MarketplaceConnector {
 
@@ -14,6 +15,14 @@ public interface MarketplaceConnector {
     TokenResult refresh(String refreshToken);
 
     ShopProfile getShopProfile(String accessToken);
+
+    List<Map<String, Object>> getProducts(String accessToken);
+
+    List<Map<String, Object>> getOrders(String accessToken);
+
+    ProductPublishResult publishProduct(
+            String accessToken,
+            ProductPublishRequest product);
 
     void revoke(String token);
 
@@ -32,5 +41,30 @@ public interface MarketplaceConnector {
             String siteId,
             String currency,
             String timezoneName) {
+    }
+
+    record ProductPublishRequest(
+            String externalProductId,
+            String title,
+            String description,
+            List<ProductVariantPublishRequest> variants) {
+    }
+
+    record ProductVariantPublishRequest(
+            String productVariantId,
+            String sellerSku,
+            java.math.BigDecimal price,
+            int quantity) {
+    }
+
+    record ProductPublishResult(
+            String productId,
+            List<ProductVariantPublishResult> variants) {
+    }
+
+    record ProductVariantPublishResult(
+            String productVariantId,
+            String skuId,
+            String sellerSku) {
     }
 }

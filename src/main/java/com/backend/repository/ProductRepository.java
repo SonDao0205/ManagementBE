@@ -1,6 +1,7 @@
 package com.backend.repository;
 
 import java.util.Optional;
+import java.util.List;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -15,6 +16,11 @@ public interface ProductRepository extends JpaRepository<ProductEntity, String> 
     Page<ProductEntity> findAllByTenantIdAndDeletedAtIsNull(String tenantId, Pageable pageable);
 
     Optional<ProductEntity> findByIdAndTenantIdAndDeletedAtIsNull(String id, String tenantId);
+
+    Optional<ProductEntity> findByTenantIdAndProductCodeIgnoreCaseAndDeletedAtIsNull(
+            String tenantId, String productCode);
+
+    List<ProductEntity> findAllByTenantIdAndDeletedAtIsNullOrderByUpdatedAtDesc(String tenantId);
 
     @Query("""
             SELECT p FROM ProductEntity p

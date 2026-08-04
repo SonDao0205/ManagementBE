@@ -28,6 +28,9 @@ import com.backend.repository.TenantRepository;
 import com.backend.repository.TenantUserCredentialRepository;
 import com.backend.service.AuthenticationException;
 import com.backend.service.CskhAccountService;
+import com.backend.service.StaffCredentialEmailService;
+import com.backend.security.TemporaryPasswordGenerator;
+import com.backend.security.TenantPasswordPolicy;
 
 @Service
 public class CskhAccountServiceImpl implements CskhAccountService {
@@ -39,6 +42,9 @@ public class CskhAccountServiceImpl implements CskhAccountService {
     private final PasswordEncoder passwordEncoder;
     private final TenantUserCredentialRepository tenantUserCredentialRepository;
     private final EntityManager entityManager;
+    private final TemporaryPasswordGenerator temporaryPasswordGenerator;
+    private final TenantPasswordPolicy passwordPolicy;
+    private final StaffCredentialEmailService credentialEmailService;
 
     public CskhAccountServiceImpl(
             TenantUserRepository tenantUserRepository,
@@ -47,7 +53,10 @@ public class CskhAccountServiceImpl implements CskhAccountService {
             TenantRepository tenantRepository,
             PasswordEncoder passwordEncoder,
             TenantUserCredentialRepository tenantUserCredentialRepository,
-            EntityManager entityManager) {
+            EntityManager entityManager,
+            TemporaryPasswordGenerator temporaryPasswordGenerator,
+            TenantPasswordPolicy passwordPolicy,
+            StaffCredentialEmailService credentialEmailService) {
         this.tenantUserRepository = tenantUserRepository;
         this.tenantUserRoleRepository = tenantUserRoleRepository;
         this.roleRepository = roleRepository;
@@ -55,6 +64,9 @@ public class CskhAccountServiceImpl implements CskhAccountService {
         this.passwordEncoder = passwordEncoder;
         this.tenantUserCredentialRepository = tenantUserCredentialRepository;
         this.entityManager = entityManager;
+        this.temporaryPasswordGenerator = temporaryPasswordGenerator;
+        this.passwordPolicy = passwordPolicy;
+        this.credentialEmailService = credentialEmailService;
     }
 
     @Override
@@ -89,6 +101,8 @@ public class CskhAccountServiceImpl implements CskhAccountService {
                 .orElseThrow(() -> new AuthenticationException(HttpStatus.BAD_REQUEST, "ROLE_NOT_FOUND", "Không tìm thấy vai trò CSKH trong hệ thống."));
 
         String staffId = UUID.randomUUID().toString();
+        String temporaryPassword = temporaryPasswordGenerator.generate();
+        passwordPolicy.validate(temporaryPassword);
         
         TenantUserEntity user = new TenantUserEntity();
         user.setId(staffId);
@@ -103,7 +117,7 @@ public class CskhAccountServiceImpl implements CskhAccountService {
         TenantUserCredentialEntity credential = new TenantUserCredentialEntity();
         credential.setTenantUserId(staffId);
         credential.setTenantUser(user);
-        credential.setPasswordHash(passwordEncoder.encode(request.password()));
+        credential.setPasswordHash(passwordEncoder.encode(temporaryPassword));
         credential.setPasswordAlgorithm("ARGON2ID");
         credential.setMustChangePassword(true); // force password change on first login
         credential.setCredentialVersion(1);
@@ -120,6 +134,12 @@ public class CskhAccountServiceImpl implements CskhAccountService {
         userRole.setRoleScopeKey(role.getTenantScopeKey());
         userRole.setAssignedByUserId(creatorUserId);
         tenantUserRoleRepository.save(userRole);
+
+        credentialEmailService.sendTemporaryPassword(
+                email,
+                user.getDisplayName(),
+                tenant.getTenantName(),
+                temporaryPassword);
 
         return new StaffUserResponse(
                 user.getId(),

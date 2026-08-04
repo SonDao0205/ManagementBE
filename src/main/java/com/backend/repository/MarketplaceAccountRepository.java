@@ -32,4 +32,7 @@ public interface MarketplaceAccountRepository
     Optional<MarketplaceAccountEntity> findByMarketplaceIdAndExternalAccountId(
             String marketplaceId,
             String externalAccountId);
+
+    List<MarketplaceAccountEntity> findByConnectionStatusAndDeletedAtIsNull(
+            String connectionStatus);
 }

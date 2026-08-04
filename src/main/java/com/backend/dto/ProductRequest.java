@@ -15,6 +15,7 @@ public record ProductRequest(
         @Size(max = 255)
         String name,
 
+        @NotBlank
         @Size(max = 100)
         String productCode,
 
@@ -38,15 +39,18 @@ public record ProductRequest(
         String imageUrl,
 
         /** Nullable – service defaults to ACTIVE when null. */
+        @jakarta.validation.constraints.Pattern(regexp = "DRAFT|ACTIVE|INACTIVE", message = "Trạng thái sản phẩm không hợp lệ.")
         String status,
 
         @Valid
-        List<VariantRequest> variants) {
+        List<VariantRequest> variants,
+
+        List<@Size(max = 36) String> marketplaceAccountIds) {
 
     public record VariantRequest(
-            String sku,
-            String variantName,
-            BigDecimal price,
-            Integer stockQuantity) {
+            @NotBlank @Size(max = 200) String sku,
+            @Size(max = 255) String variantName,
+            @DecimalMin("0") BigDecimal price,
+            @Min(0) Integer stockQuantity) {
     }
 }

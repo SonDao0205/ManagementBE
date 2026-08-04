@@ -35,7 +35,7 @@ public class OAuthAuthorizationSessionEntity {
     private String stateHash;
 
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "requested_scopes_json", nullable = false, columnDefinition = "json")
+    @Column(name = "requested_scopes_json", nullable = false, columnDefinition = "jsonb")
     private String requestedScopesJson;
 
     @Column(name = "return_url", length = 500)

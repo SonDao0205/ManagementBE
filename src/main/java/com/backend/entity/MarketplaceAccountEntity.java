@@ -59,7 +59,7 @@ public class MarketplaceAccountEntity {
     private Instant lastVerifiedAt;
 
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "settings_json", nullable = false, columnDefinition = "json")
+    @Column(name = "settings_json", nullable = false, columnDefinition = "jsonb")
     private String settingsJson;
 
     @Column(name = "created_by_user_id", length = 36)

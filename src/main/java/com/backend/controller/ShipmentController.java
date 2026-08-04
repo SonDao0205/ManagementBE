@@ -16,12 +16,16 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 
 @RestController
 @RequestMapping("/api/v1/shipments")
 @Tag(name = "Shipment Tracking")
 @RequiredArgsConstructor
 @PreAuthorize("hasAuthority('SESSION_AUTHENTICATED')")
+@Validated
 public class ShipmentController {
 
     private final ShipmentService shipmentService;
@@ -30,8 +34,8 @@ public class ShipmentController {
     public Page<ShipmentResponse> list(
             @AuthenticationPrincipal TenantPrincipal principal,
             @RequestParam(required = false) String search,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size
     ) {
         PageRequest pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
         return shipmentService.list(principal.tenantId(), search, pageable);

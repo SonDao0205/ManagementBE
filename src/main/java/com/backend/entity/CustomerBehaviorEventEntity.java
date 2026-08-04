@@ -64,7 +64,7 @@ public class CustomerBehaviorEventEntity {
     @Column(name = "entity_external_id", length = 200)
     private String entityExternalId;
 
-    @Column(name = "properties_json", columnDefinition = "json", nullable = false)
+    @Column(name = "properties_json", columnDefinition = "jsonb", nullable = false)
     private String propertiesJson = "{}";
 
     @Column(name = "occurred_at", nullable = false)
