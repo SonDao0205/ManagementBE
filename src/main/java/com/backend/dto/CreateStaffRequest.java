@@ -19,9 +19,5 @@ public record CreateStaffRequest(
         @Pattern(
                 regexp = "^$|^(0[3|5|7|8|9])+([0-9]{8})$",
                 message = "Số điện thoại không đúng định dạng Việt Nam.")
-        String phoneNumber,
-
-        @NotBlank(message = "Vui lòng nhập mật khẩu.")
-        @Size(min = 6, max = 100, message = "Mật khẩu phải chứa ít nhất 6 ký tự.")
-        String password
+        String phoneNumber
 ) {}

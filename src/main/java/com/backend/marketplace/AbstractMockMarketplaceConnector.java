@@ -4,6 +4,7 @@ import java.net.http.HttpClient;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 import org.springframework.http.HttpStatus;
@@ -95,6 +96,60 @@ abstract class AbstractMockMarketplaceConnector implements MarketplaceConnector 
     }
 
     @Override
+    public List<Map<String, Object>> getProducts(String accessToken) {
+        return marketplaceRows("/mock/seller/products", accessToken, "sản phẩm");
+    }
+
+    @Override
+    public List<Map<String, Object>> getOrders(String accessToken) {
+        return marketplaceRows("/mock/seller/orders", accessToken, "đơn hàng");
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public ProductPublishResult publishProduct(
+            String accessToken,
+            ProductPublishRequest product) {
+        try {
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("external_product_id", product.externalProductId());
+            body.put("title", product.title());
+            body.put("description", product.description() == null ? "" : product.description());
+            body.put("variants", product.variants().stream().map(variant -> {
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("external_variant_id", variant.productVariantId());
+                item.put("variant_name", variant.variantName());
+                item.put("seller_sku", variant.sellerSku());
+                item.put("color", variant.color());
+                item.put("size", variant.size());
+                item.put("price", variant.price());
+                item.put("quantity", variant.quantity());
+                return item;
+            }).toList());
+            Map<String, Object> response = data(restClient.post()
+                    .uri("/mock/seller/products")
+                    .header("Authorization", "Bearer " + accessToken)
+                    .body(body)
+                    .retrieve()
+                    .body(Map.class));
+            Object rawVariants = response.get("variants");
+            List<ProductVariantPublishResult> variants = rawVariants instanceof List<?> rows
+                    ? rows.stream()
+                            .filter(Map.class::isInstance)
+                            .map(Map.class::cast)
+                            .map(row -> new ProductVariantPublishResult(
+                                    text(row, "external_variant_id"),
+                                    text(row, "sku_id"),
+                                    text(row, "seller_sku")))
+                            .toList()
+                    : List.of();
+            return new ProductPublishResult(text(response, "product_id"), variants);
+        } catch (RestClientException | IllegalArgumentException exception) {
+            throw unavailable("Không thể đăng sản phẩm lên sàn giả lập.", exception);
+        }
+    }
+
+    @Override
     public void revoke(String token) {
         try {
             restClient.post()
@@ -128,6 +183,29 @@ abstract class AbstractMockMarketplaceConnector implements MarketplaceConnector 
                     stringList(data.get("scopes")));
         } catch (RestClientException | IllegalArgumentException exception) {
             throw unavailable("Không thể đổi hoặc làm mới token từ sàn giả lập.", exception);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> marketplaceRows(
+            String path,
+            String accessToken,
+            String resourceName) {
+        try {
+            Map<?, ?> wrapper = restClient.get()
+                    .uri(path)
+                    .header("Authorization", "Bearer " + accessToken)
+                    .retrieve()
+                    .body(Map.class);
+            if (wrapper == null || !(wrapper.get("data") instanceof List<?> rows)) {
+                throw new IllegalArgumentException("Marketplace response has no data list");
+            }
+            return rows.stream()
+                    .filter(Map.class::isInstance)
+                    .map(value -> (Map<String, Object>) value)
+                    .toList();
+        } catch (RestClientException | IllegalArgumentException exception) {
+            throw unavailable("Không thể tải " + resourceName + " từ sàn giả lập.", exception);
         }
     }
 

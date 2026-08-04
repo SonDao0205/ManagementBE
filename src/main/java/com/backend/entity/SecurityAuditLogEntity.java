@@ -49,7 +49,7 @@ public class SecurityAuditLogEntity {
     private String ipAddress;
 
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "metadata_json", nullable = false, columnDefinition = "json")
+    @Column(name = "metadata_json", nullable = false, columnDefinition = "jsonb")
     private String metadataJson = "{}";
 
     @Column(name = "occurred_at", nullable = false)

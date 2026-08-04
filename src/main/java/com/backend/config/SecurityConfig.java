@@ -26,7 +26,11 @@ import com.backend.security.TenantSessionAuthenticationFilter;
 @EnableMethodSecurity
 @EnableConfigurationProperties({
         TenantAuthProperties.class,
-        MarketplaceProperties.class
+        MarketplaceProperties.class,
+        CloudinaryProperties.class,
+        StaffMailProperties.class,
+        AiBackendProperties.class,
+        ChatBackendProperties.class
 })
 public class SecurityConfig {
 

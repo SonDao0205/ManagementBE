@@ -2,6 +2,10 @@ package com.backend;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -30,8 +34,13 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.mockito.ArgumentCaptor;
 
 import com.jayway.jsonpath.JsonPath;
+import com.backend.service.ApiException;
+import com.backend.service.StaffCredentialEmailService;
+import org.springframework.http.HttpStatus;
 
 import jakarta.servlet.http.Cookie;
 
@@ -73,6 +82,9 @@ class TenantAuthenticationIntegrationTest {
 
     @Autowired
     private PasswordEncoder passwordEncoder;
+
+    @MockitoBean
+    private StaffCredentialEmailService staffCredentialEmailService;
 
     @BeforeEach
     void seedTenantLogin() {
@@ -261,6 +273,100 @@ class TenantAuthenticationIntegrationTest {
                         .value("Vui lòng nhập mật khẩu."));
 
         assertThat(jdbcClient.sql("SELECT COUNT(*) FROM login_sessions")
+                .query(Integer.class)
+                .single()).isZero();
+    }
+
+    @Test
+    void staffCreationGeneratesServerPasswordEmailsItAndRollsBackWhenDeliveryFails() throws Exception {
+        jdbcClient.sql("""
+                INSERT INTO roles (id, tenant_id, tenant_scope_key, role_code)
+                VALUES ('30000000-0000-0000-0000-000000000002', :tenantId, :tenantId, 'CS_AGENT')
+                """)
+                .param("tenantId", TENANT_ID)
+                .update();
+
+        Csrf csrf = getCsrf();
+        MvcResult loginResult = mockMvc.perform(post("/api/auth/login")
+                        .cookie(csrf.cookie())
+                        .header("X-XSRF-TOKEN", csrf.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"owner@demo.vn","password":"Tenant@123"}
+                                """))
+                .andExpect(status().isOk())
+                .andReturn();
+        Cookie sessionCookie = loginResult.getResponse().getCookie("omni_tenant_session");
+        mockMvc.perform(post("/api/auth/change-password")
+                        .cookie(csrf.cookie(), sessionCookie)
+                        .header("X-XSRF-TOKEN", csrf.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "currentPassword":"Tenant@123",
+                                  "newPassword":"NewTenant@123",
+                                  "confirmPassword":"NewTenant@123"
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/staff")
+                        .cookie(csrf.cookie(), sessionCookie)
+                        .header("X-XSRF-TOKEN", csrf.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email":"agent@demo.vn",
+                                  "displayName":"Nhân viên CSKH",
+                                  "phoneNumber":"0912345678"
+                                }
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.email").value("agent@demo.vn"))
+                .andExpect(jsonPath("$.password").doesNotExist());
+
+        ArgumentCaptor<String> passwordCaptor = ArgumentCaptor.forClass(String.class);
+        verify(staffCredentialEmailService).sendTemporaryPassword(
+                eq("agent@demo.vn"),
+                eq("Nhân viên CSKH"),
+                eq("Cửa hàng Demo"),
+                passwordCaptor.capture());
+        String staffId = jdbcClient.sql(
+                        "SELECT id FROM tenant_users WHERE email = 'agent@demo.vn'")
+                .query(String.class)
+                .single();
+        String passwordHash = jdbcClient.sql("""
+                        SELECT password_hash FROM tenant_user_credentials
+                        WHERE tenant_user_id = :staffId
+                        """)
+                .param("staffId", staffId)
+                .query(String.class)
+                .single();
+        assertThat(passwordCaptor.getValue()).hasSize(20);
+        assertThat(passwordEncoder.matches(passwordCaptor.getValue(), passwordHash)).isTrue();
+
+        doThrow(new ApiException(
+                HttpStatus.UNPROCESSABLE_CONTENT,
+                "STAFF_EMAIL_DELIVERY_FAILED",
+                "Không thể gửi mật khẩu đến email nhân viên. Tài khoản chưa được tạo."))
+                .when(staffCredentialEmailService)
+                .sendTemporaryPassword(
+                        eq("unreachable@demo.vn"), anyString(), anyString(), anyString());
+
+        mockMvc.perform(post("/api/staff")
+                        .cookie(csrf.cookie(), sessionCookie)
+                        .header("X-XSRF-TOKEN", csrf.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email":"unreachable@demo.vn",
+                                  "displayName":"Email không nhận được"
+                                }
+                                """))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.code").value("STAFF_EMAIL_DELIVERY_FAILED"));
+        assertThat(jdbcClient.sql(
+                        "SELECT COUNT(*) FROM tenant_users WHERE email = 'unreachable@demo.vn'")
                 .query(Integer.class)
                 .single()).isZero();
     }

@@ -37,7 +37,7 @@ public class MarketplaceConnectionHistoryEntity {
     private String reasonCode;
 
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "details_json", nullable = false, columnDefinition = "json")
+    @Column(name = "details_json", nullable = false, columnDefinition = "jsonb")
     private String detailsJson;
 
     @Column(name = "changed_by_user_id", length = 36)

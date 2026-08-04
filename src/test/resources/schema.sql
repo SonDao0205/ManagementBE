@@ -2,7 +2,9 @@ CREATE TABLE tenants (
   id VARCHAR(36) PRIMARY KEY,
   tenant_code VARCHAR(50) NOT NULL UNIQUE,
   tenant_name VARCHAR(255) NOT NULL,
+  contact_email VARCHAR(255) NULL,
   status VARCHAR(20) NOT NULL,
+  timezone_name VARCHAR(64) NOT NULL DEFAULT 'Asia/Ho_Chi_Minh',
   deleted_at TIMESTAMP NULL
 );
 
@@ -14,6 +16,8 @@ CREATE TABLE tenant_users (
   avatar_url VARCHAR(2000) NULL,
   status VARCHAR(20) NOT NULL,
   last_login_at TIMESTAMP NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   deleted_at TIMESTAMP NULL,
   CONSTRAINT fk_test_user_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id)
 );
@@ -48,7 +52,10 @@ CREATE TABLE roles (
   id VARCHAR(36) PRIMARY KEY,
   tenant_id VARCHAR(36) NULL,
   tenant_scope_key VARCHAR(36) NOT NULL,
-  role_code VARCHAR(50) NOT NULL
+  role_code VARCHAR(50) NOT NULL,
+  role_name VARCHAR(100) NOT NULL DEFAULT 'Tenant Manager',
+  description TEXT NULL,
+  is_system BOOLEAN NOT NULL DEFAULT FALSE
 );
 
 CREATE TABLE permissions (
@@ -67,6 +74,8 @@ CREATE TABLE tenant_user_roles (
   tenant_id VARCHAR(36) NOT NULL,
   role_id VARCHAR(36) NOT NULL,
   role_scope_key VARCHAR(36) NOT NULL,
+  assigned_by_user_id VARCHAR(36) NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (tenant_user_id, role_id)
 );
 
@@ -135,6 +144,56 @@ CREATE TABLE marketplace_accounts (
     UNIQUE (marketplace_id, external_account_id)
 );
 
+CREATE TABLE marketplace_customers (
+  id VARCHAR(36) PRIMARY KEY,
+  tenant_id VARCHAR(36) NOT NULL,
+  marketplace_account_id VARCHAR(36) NOT NULL,
+  external_customer_id VARCHAR(200) NOT NULL,
+  external_im_user_id VARCHAR(200) NULL,
+  display_name VARCHAR(255) NULL,
+  avatar_url TEXT NULL,
+  phone_masked VARCHAR(100) NULL,
+  email_masked VARCHAR(255) NULL,
+  raw_payload JSON NOT NULL DEFAULT '{}',
+  first_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  last_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_test_marketplace_customer_tenant
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+  CONSTRAINT fk_test_marketplace_customer_account
+    FOREIGN KEY (marketplace_account_id) REFERENCES marketplace_accounts(id)
+);
+
+CREATE TABLE ai_shop_contexts (
+  id VARCHAR(36) PRIMARY KEY,
+  tenant_id VARCHAR(36) NOT NULL,
+  marketplace_account_id VARCHAR(36) NOT NULL,
+  context_name VARCHAR(150) NOT NULL,
+  mood VARCHAR(30) NOT NULL,
+  assistant_name VARCHAR(100) NOT NULL,
+  business_description TEXT NOT NULL,
+  brand_voice VARCHAR(1000) NOT NULL,
+  response_guidelines TEXT NOT NULL,
+  prohibited_topics_json JSON NOT NULL,
+  default_language VARCHAR(20) NOT NULL,
+  max_response_characters INT NOT NULL,
+  default_knowledge_base_id VARCHAR(36) NULL,
+  is_active BOOLEAN NOT NULL,
+  created_by_user_id VARCHAR(36) NOT NULL,
+  activated_by_user_id VARCHAR(36) NULL,
+  activated_at TIMESTAMP NULL,
+  created_at TIMESTAMP NOT NULL,
+  updated_at TIMESTAMP NOT NULL,
+  deleted_at TIMESTAMP NULL,
+  CONSTRAINT uq_test_ai_shop_context_name
+    UNIQUE (marketplace_account_id, context_name),
+  CONSTRAINT fk_test_ai_shop_context_tenant
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+  CONSTRAINT fk_test_ai_shop_context_account
+    FOREIGN KEY (marketplace_account_id) REFERENCES marketplace_accounts(id)
+);
+
 CREATE TABLE marketplace_credentials (
   id VARCHAR(36) PRIMARY KEY,
   marketplace_account_id VARCHAR(36) NOT NULL UNIQUE,
@@ -190,75 +249,228 @@ CREATE TABLE oauth_authorization_sessions (
 CREATE TABLE products (
   id VARCHAR(36) PRIMARY KEY,
   tenant_id VARCHAR(36) NOT NULL,
-  name VARCHAR(255) NOT NULL,
-  product_code VARCHAR(100) NULL,
-  category VARCHAR(100) NULL,
+  product_code VARCHAR(100) NOT NULL,
+  product_name VARCHAR(500) NOT NULL,
   description TEXT NULL,
-  price DECIMAL(15,2) NOT NULL DEFAULT 0,
-  cost_price DECIMAL(15,2) NOT NULL DEFAULT 0,
-  total_stock INT NOT NULL DEFAULT 0,
-  min_stock_alert INT NOT NULL DEFAULT 5,
-  image_url VARCHAR(500) NULL,
-  status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+  brand_name VARCHAR(255) NULL,
+  internal_category_code VARCHAR(100) NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'DRAFT',
+  attributes_json JSON NOT NULL DEFAULT '{}',
+  version INT NOT NULL DEFAULT 1,
+  created_by_user_id VARCHAR(36) NULL,
   created_at TIMESTAMP NOT NULL,
   updated_at TIMESTAMP NOT NULL,
-  deleted_at TIMESTAMP NULL
+  deleted_at TIMESTAMP NULL,
+  CONSTRAINT uq_test_products_code UNIQUE (tenant_id, product_code),
+  CONSTRAINT fk_test_products_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id)
 );
 
 CREATE TABLE product_variants (
   id VARCHAR(36) PRIMARY KEY,
-  product_id VARCHAR(36) NOT NULL,
   tenant_id VARCHAR(36) NOT NULL,
-  sku VARCHAR(100) NOT NULL,
-  variant_name VARCHAR(100) NULL,
-  price DECIMAL(15,2) NULL,
-  stock_quantity INT NOT NULL DEFAULT 0,
+  product_id VARCHAR(36) NOT NULL,
+  variant_code VARCHAR(100) NOT NULL,
+  seller_sku VARCHAR(200) NOT NULL,
+  variant_name VARCHAR(255) NULL,
+  attributes_json JSON NOT NULL DEFAULT '{}',
+  price DECIMAL(18,2) NOT NULL DEFAULT 0,
+  compare_at_price DECIMAL(18,2) NULL,
+  currency VARCHAR(3) NOT NULL DEFAULT 'VND',
+  stock_on_hand INT NOT NULL DEFAULT 0,
+  reserved_stock INT NOT NULL DEFAULT 0,
+  status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+  version INT NOT NULL DEFAULT 1,
   created_at TIMESTAMP NOT NULL,
-  updated_at TIMESTAMP NOT NULL
+  updated_at TIMESTAMP NOT NULL,
+  deleted_at TIMESTAMP NULL,
+  CONSTRAINT uq_test_variants_sku UNIQUE (tenant_id, seller_sku),
+  CONSTRAINT fk_test_variants_product FOREIGN KEY (product_id) REFERENCES products(id)
+);
+
+CREATE TABLE product_media (
+  id VARCHAR(36) PRIMARY KEY,
+  tenant_id VARCHAR(36) NOT NULL,
+  product_id VARCHAR(36) NOT NULL,
+  product_variant_id VARCHAR(36) NULL,
+  media_type VARCHAR(20) NOT NULL,
+  storage_key VARCHAR(500) NOT NULL,
+  public_url TEXT NOT NULL,
+  checksum_sha256 VARCHAR(64) NULL,
+  sort_order INT NOT NULL DEFAULT 0,
+  is_primary BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMP NOT NULL,
+  deleted_at TIMESTAMP NULL,
+  CONSTRAINT fk_test_product_media_product FOREIGN KEY (product_id) REFERENCES products(id),
+  CONSTRAINT fk_test_product_media_variant FOREIGN KEY (product_variant_id) REFERENCES product_variants(id)
+);
+
+CREATE TABLE marketplace_products (
+  id VARCHAR(36) PRIMARY KEY,
+  tenant_id VARCHAR(36) NOT NULL,
+  product_id VARCHAR(36) NOT NULL,
+  marketplace_account_id VARCHAR(36) NOT NULL,
+  external_product_id VARCHAR(200) NOT NULL,
+  external_title VARCHAR(500) NULL,
+  raw_status VARCHAR(100) NOT NULL,
+  canonical_status VARCHAR(30) NOT NULL,
+  sync_status VARCHAR(20) NOT NULL DEFAULT 'SYNCED',
+  raw_payload JSON NOT NULL DEFAULT '{}',
+  last_synced_at TIMESTAMP NULL,
+  created_at TIMESTAMP NOT NULL,
+  updated_at TIMESTAMP NOT NULL,
+  deleted_at TIMESTAMP NULL,
+  CONSTRAINT uq_test_marketplace_product_external
+    UNIQUE (marketplace_account_id, external_product_id),
+  CONSTRAINT uq_test_marketplace_product_mapping
+    UNIQUE (product_id, marketplace_account_id),
+  CONSTRAINT fk_test_marketplace_product_product
+    FOREIGN KEY (product_id) REFERENCES products(id),
+  CONSTRAINT fk_test_marketplace_product_account
+    FOREIGN KEY (marketplace_account_id) REFERENCES marketplace_accounts(id)
 );
 
 CREATE TABLE orders (
   id VARCHAR(36) PRIMARY KEY,
   tenant_id VARCHAR(36) NOT NULL,
-  order_code VARCHAR(50) NOT NULL,
-  external_order_id VARCHAR(100) NULL,
-  marketplace VARCHAR(50) NOT NULL DEFAULT 'MANUAL',
-  customer_name VARCHAR(255) NOT NULL,
-  customer_phone VARCHAR(30) NULL,
-  shipping_address_json JSON NULL,
-  total_amount DECIMAL(15,2) NOT NULL DEFAULT 0,
-  discount_amount DECIMAL(15,2) NOT NULL DEFAULT 0,
-  final_amount DECIMAL(15,2) NOT NULL DEFAULT 0,
-  payment_status VARCHAR(20) NOT NULL DEFAULT 'COD',
-  status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+  marketplace_account_id VARCHAR(36) NOT NULL,
+  marketplace_customer_id VARCHAR(36) NULL,
+  external_order_id VARCHAR(200) NOT NULL,
+  raw_status VARCHAR(100) NOT NULL,
+  canonical_status VARCHAR(30) NOT NULL,
+  payment_status VARCHAR(30) NOT NULL DEFAULT 'UNPAID',
+  refund_status VARCHAR(30) NOT NULL DEFAULT 'NONE',
+  currency VARCHAR(3) NOT NULL DEFAULT 'VND',
+  subtotal_amount DECIMAL(18,2) NOT NULL DEFAULT 0,
+  shipping_amount DECIMAL(18,2) NOT NULL DEFAULT 0,
+  discount_amount DECIMAL(18,2) NOT NULL DEFAULT 0,
+  tax_amount DECIMAL(18,2) NOT NULL DEFAULT 0,
+  total_amount DECIMAL(18,2) NOT NULL DEFAULT 0,
+  shipping_address_json JSON NOT NULL DEFAULT '{}',
+  billing_address_json JSON NOT NULL DEFAULT '{}',
+  shipping_address_encrypted TEXT NULL,
+  billing_address_encrypted TEXT NULL,
+  pii_key_version VARCHAR(30) NULL,
+  buyer_note TEXT NULL,
+  internal_note TEXT NULL,
+  raw_payload JSON NOT NULL DEFAULT '{}',
+  external_created_at TIMESTAMP NOT NULL,
+  external_updated_at TIMESTAMP NOT NULL,
+  last_synced_at TIMESTAMP NOT NULL,
+  version INT NOT NULL DEFAULT 1,
   created_at TIMESTAMP NOT NULL,
   updated_at TIMESTAMP NOT NULL,
-  deleted_at TIMESTAMP NULL
+  deleted_at TIMESTAMP NULL,
+  CONSTRAINT fk_test_orders_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+  CONSTRAINT fk_test_orders_account FOREIGN KEY (marketplace_account_id) REFERENCES marketplace_accounts(id)
 );
 
 CREATE TABLE order_items (
   id VARCHAR(36) PRIMARY KEY,
-  order_id VARCHAR(36) NOT NULL,
   tenant_id VARCHAR(36) NOT NULL,
-  product_name VARCHAR(255) NOT NULL,
-  sku VARCHAR(100) NULL,
-  variant_name VARCHAR(100) NULL,
-  price DECIMAL(15,2) NOT NULL,
-  quantity INT NOT NULL DEFAULT 1
+  order_id VARCHAR(36) NOT NULL,
+  product_id VARCHAR(36) NULL,
+  product_variant_id VARCHAR(36) NULL,
+  marketplace_product_id VARCHAR(36) NULL,
+  marketplace_product_variant_id VARCHAR(36) NULL,
+  external_order_item_id VARCHAR(200) NOT NULL,
+  external_product_id VARCHAR(200) NOT NULL,
+  external_sku_id VARCHAR(200) NULL,
+  seller_sku_snapshot VARCHAR(200) NULL,
+  product_name_snapshot VARCHAR(500) NOT NULL,
+  variant_name_snapshot VARCHAR(255) NULL,
+  quantity INT NOT NULL,
+  unit_price DECIMAL(18,2) NOT NULL,
+  discount_amount DECIMAL(18,2) NOT NULL DEFAULT 0,
+  paid_amount DECIMAL(18,2) NOT NULL,
+  currency VARCHAR(3) NOT NULL DEFAULT 'VND',
+  raw_status VARCHAR(100) NOT NULL,
+  canonical_status VARCHAR(30) NOT NULL,
+  raw_payload JSON NOT NULL DEFAULT '{}',
+  created_at TIMESTAMP NOT NULL,
+  updated_at TIMESTAMP NOT NULL,
+  CONSTRAINT fk_test_order_items_order FOREIGN KEY (order_id) REFERENCES orders(id)
 );
 
 CREATE TABLE shipments (
   id VARCHAR(36) PRIMARY KEY,
   tenant_id VARCHAR(36) NOT NULL,
-  order_id VARCHAR(36) NULL,
-  waybill_code VARCHAR(100) NOT NULL,
-  carrier_name VARCHAR(100) NULL,
-  destination VARCHAR(255) NULL,
-  cod_amount DECIMAL(15,2) NOT NULL DEFAULT 0,
-  latest_milestone VARCHAR(255) NULL,
-  milestone_type VARCHAR(20) NOT NULL DEFAULT 'waiting',
+  order_id VARCHAR(36) NOT NULL,
+  external_package_id VARCHAR(200) NOT NULL,
+  tracking_number VARCHAR(200) NULL,
+  shipping_provider VARCHAR(150) NULL,
+  raw_status VARCHAR(100) NOT NULL,
+  canonical_status VARCHAR(30) NOT NULL,
+  shipping_label_url TEXT NULL,
+  package_items_json JSON NOT NULL DEFAULT '[]',
+  ready_to_ship_at TIMESTAMP NULL,
   shipped_at TIMESTAMP NULL,
   delivered_at TIMESTAMP NULL,
+  raw_payload JSON NOT NULL DEFAULT '{}',
   created_at TIMESTAMP NOT NULL,
-  updated_at TIMESTAMP NOT NULL
+  updated_at TIMESTAMP NOT NULL,
+  CONSTRAINT fk_test_shipments_order FOREIGN KEY (order_id) REFERENCES orders(id)
+);
+
+CREATE TABLE order_status_history (
+  id VARCHAR(36) PRIMARY KEY,
+  tenant_id VARCHAR(36) NOT NULL,
+  order_id VARCHAR(36) NOT NULL,
+  order_item_id VARCHAR(36) NULL,
+  from_raw_status VARCHAR(100) NULL,
+  to_raw_status VARCHAR(100) NOT NULL,
+  from_canonical_status VARCHAR(30) NULL,
+  to_canonical_status VARCHAR(30) NOT NULL,
+  source VARCHAR(30) NOT NULL,
+  external_event_id VARCHAR(200) NULL,
+  changed_by_user_id VARCHAR(36) NULL,
+  reason_code VARCHAR(100) NULL,
+  occurred_at TIMESTAMP NOT NULL,
+  created_at TIMESTAMP NOT NULL,
+  CONSTRAINT fk_test_status_history_order FOREIGN KEY (order_id) REFERENCES orders(id)
+);
+
+CREATE TABLE conversations (
+  id VARCHAR(36) PRIMARY KEY,
+  tenant_id VARCHAR(36) NOT NULL,
+  marketplace_account_id VARCHAR(36) NULL,
+  marketplace_customer_id VARCHAR(36) NULL,
+  ai_mode VARCHAR(20) NOT NULL DEFAULT 'SUGGEST_ONLY',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE human_handoffs (
+  id VARCHAR(36) PRIMARY KEY,
+  tenant_id VARCHAR(36) NOT NULL,
+  conversation_id VARCHAR(36) NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'REQUESTED',
+  resolved_at TIMESTAMP NULL,
+  resolution_note TEXT NULL,
+  CONSTRAINT fk_test_handoff_conversation
+      FOREIGN KEY (conversation_id) REFERENCES conversations(id)
+);
+
+CREATE TABLE messages (
+  id VARCHAR(36) PRIMARY KEY,
+  tenant_id VARCHAR(36) NOT NULL,
+  conversation_id VARCHAR(36) NOT NULL,
+  direction VARCHAR(10) NOT NULL,
+  sender_type VARCHAR(20) NOT NULL DEFAULT 'CUSTOMER',
+  text_content TEXT NULL,
+  external_created_at TIMESTAMP NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_test_message_conversation FOREIGN KEY (conversation_id) REFERENCES conversations(id)
+);
+
+CREATE TABLE weekly_analytics_email_deliveries (
+  tenant_id VARCHAR(36) NOT NULL,
+  week_start DATE NOT NULL,
+  recipient_email VARCHAR(255) NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'SENDING',
+  sent_at TIMESTAMP NULL,
+  last_error TEXT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (tenant_id, week_start, recipient_email),
+  CONSTRAINT fk_test_weekly_analytics_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id)
 );
