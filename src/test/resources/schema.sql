@@ -2,7 +2,9 @@ CREATE TABLE tenants (
   id VARCHAR(36) PRIMARY KEY,
   tenant_code VARCHAR(50) NOT NULL UNIQUE,
   tenant_name VARCHAR(255) NOT NULL,
+  contact_email VARCHAR(255) NULL,
   status VARCHAR(20) NOT NULL,
+  timezone_name VARCHAR(64) NOT NULL DEFAULT 'Asia/Ho_Chi_Minh',
   deleted_at TIMESTAMP NULL
 );
 
@@ -140,6 +142,27 @@ CREATE TABLE marketplace_accounts (
     FOREIGN KEY (marketplace_id) REFERENCES marketplaces(id),
   CONSTRAINT uq_marketplace_accounts_external_owner
     UNIQUE (marketplace_id, external_account_id)
+);
+
+CREATE TABLE marketplace_customers (
+  id VARCHAR(36) PRIMARY KEY,
+  tenant_id VARCHAR(36) NOT NULL,
+  marketplace_account_id VARCHAR(36) NOT NULL,
+  external_customer_id VARCHAR(200) NOT NULL,
+  external_im_user_id VARCHAR(200) NULL,
+  display_name VARCHAR(255) NULL,
+  avatar_url TEXT NULL,
+  phone_masked VARCHAR(100) NULL,
+  email_masked VARCHAR(255) NULL,
+  raw_payload JSON NOT NULL DEFAULT '{}',
+  first_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  last_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_test_marketplace_customer_tenant
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+  CONSTRAINT fk_test_marketplace_customer_account
+    FOREIGN KEY (marketplace_account_id) REFERENCES marketplace_accounts(id)
 );
 
 CREATE TABLE ai_shop_contexts (
@@ -409,8 +432,22 @@ CREATE TABLE order_status_history (
 CREATE TABLE conversations (
   id VARCHAR(36) PRIMARY KEY,
   tenant_id VARCHAR(36) NOT NULL,
+  marketplace_account_id VARCHAR(36) NULL,
+  marketplace_customer_id VARCHAR(36) NULL,
   ai_mode VARCHAR(20) NOT NULL DEFAULT 'SUGGEST_ONLY',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE human_handoffs (
+  id VARCHAR(36) PRIMARY KEY,
+  tenant_id VARCHAR(36) NOT NULL,
+  conversation_id VARCHAR(36) NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'REQUESTED',
+  resolved_at TIMESTAMP NULL,
+  resolution_note TEXT NULL,
+  CONSTRAINT fk_test_handoff_conversation
+      FOREIGN KEY (conversation_id) REFERENCES conversations(id)
 );
 
 CREATE TABLE messages (
@@ -418,6 +455,22 @@ CREATE TABLE messages (
   tenant_id VARCHAR(36) NOT NULL,
   conversation_id VARCHAR(36) NOT NULL,
   direction VARCHAR(10) NOT NULL,
+  sender_type VARCHAR(20) NOT NULL DEFAULT 'CUSTOMER',
   text_content TEXT NULL,
+  external_created_at TIMESTAMP NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_test_message_conversation FOREIGN KEY (conversation_id) REFERENCES conversations(id)
+);
+
+CREATE TABLE weekly_analytics_email_deliveries (
+  tenant_id VARCHAR(36) NOT NULL,
+  week_start DATE NOT NULL,
+  recipient_email VARCHAR(255) NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'SENDING',
+  sent_at TIMESTAMP NULL,
+  last_error TEXT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (tenant_id, week_start, recipient_email),
+  CONSTRAINT fk_test_weekly_analytics_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id)
 );

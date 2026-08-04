@@ -115,11 +115,17 @@ abstract class AbstractMockMarketplaceConnector implements MarketplaceConnector 
             body.put("external_product_id", product.externalProductId());
             body.put("title", product.title());
             body.put("description", product.description() == null ? "" : product.description());
-            body.put("variants", product.variants().stream().map(variant -> Map.of(
-                    "external_variant_id", variant.productVariantId(),
-                    "seller_sku", variant.sellerSku(),
-                    "price", variant.price(),
-                    "quantity", variant.quantity())).toList());
+            body.put("variants", product.variants().stream().map(variant -> {
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("external_variant_id", variant.productVariantId());
+                item.put("variant_name", variant.variantName());
+                item.put("seller_sku", variant.sellerSku());
+                item.put("color", variant.color());
+                item.put("size", variant.size());
+                item.put("price", variant.price());
+                item.put("quantity", variant.quantity());
+                return item;
+            }).toList());
             Map<String, Object> response = data(restClient.post()
                     .uri("/mock/seller/products")
                     .header("Authorization", "Bearer " + accessToken)

@@ -52,7 +52,10 @@ public interface MarketplaceConnector {
 
     record ProductVariantPublishRequest(
             String productVariantId,
+            String variantName,
             String sellerSku,
+            String color,
+            String size,
             java.math.BigDecimal price,
             int quantity) {
     }

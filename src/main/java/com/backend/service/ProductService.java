@@ -112,7 +112,6 @@ public class ProductService {
         productRepository.saveAndFlush(product);
 
         List<ProductVariantEntity> variants = saveVariants(product, request, now);
-        syncMarketplaceTargets(product, request.marketplaceAccountIds(), now);
         return toResponse(product, variants);
     }
 
@@ -129,7 +128,6 @@ public class ProductService {
         product.setVersion(product.getVersion() + 1);
         productRepository.saveAndFlush(product);
         List<ProductVariantEntity> variants = saveVariants(product, request, now);
-        syncMarketplaceTargets(product, request.marketplaceAccountIds(), now);
         return toResponse(product, variants);
     }
 
@@ -320,7 +318,10 @@ public class ProductService {
             variant.setVariantCode(sku);
             variant.setSku(sku);
             variant.setVariantName(blankToNull(variantRequest.variantName()));
-            variant.setAttributesJson("{}");
+            Map<String, Object> variantAttributes = readAttributes(variant.getAttributesJson());
+            putOrRemove(variantAttributes, "color", blankToNull(variantRequest.color()));
+            putOrRemove(variantAttributes, "size", blankToNull(variantRequest.size()));
+            variant.setAttributesJson(writeJson(variantAttributes));
             variant.setPrice(nonNegative(variantRequest.price()));
             variant.setCurrency("VND");
             variant.setStockQuantity(stock);
@@ -352,6 +353,8 @@ public class ProductService {
         return List.of(new ProductRequest.VariantRequest(
                 product.getProductCode(),
                 "Mặc định",
+                null,
+                null,
                 nonNegative(request.price()),
                 request.totalStock() == null ? 0 : request.totalStock()));
     }
@@ -398,8 +401,11 @@ public class ProductService {
                 .map(variant -> {
                     int stock = defaultInt(variant.getStockQuantity());
                     int reserved = defaultInt(variant.getReservedStock());
+                    Map<String, Object> variantAttributes = readAttributes(variant.getAttributesJson());
                     return new ProductResponse.VariantResponse(
                             variant.getId(), variant.getSku(), variant.getVariantName(),
+                            stringAttribute(variantAttributes, "color"),
+                            stringAttribute(variantAttributes, "size"),
                             variant.getPrice(), stock, reserved, Math.max(stock - reserved, 0));
                 })
                 .toList();
@@ -410,40 +416,6 @@ public class ProductService {
                 product.getCreatedAt(), product.getUpdatedAt(), variantResponses,
                 media.stream().map(ProductMediaService::toResponse).toList(),
                 marketplaceAccountIds(product));
-    }
-
-    private void syncMarketplaceTargets(
-            ProductEntity product,
-            List<String> requestedAccountIds,
-            Instant now) {
-        if (requestedAccountIds == null) return;
-        List<String> targetIds = requestedAccountIds.stream()
-                .filter(value -> value != null && !value.isBlank())
-                .distinct()
-                .toList();
-        for (String accountId : targetIds) {
-            requireConnectedMarketplaceAccount(product.getTenantId(), accountId);
-        }
-
-        jdbcClient.sql("""
-                UPDATE marketplace_products
-                SET deleted_at = :now, updated_at = :now
-                WHERE tenant_id = :tenantId
-                  AND product_id = :productId
-                  AND deleted_at IS NULL
-                  AND (:keepTargets = FALSE
-                       OR marketplace_account_id NOT IN (:targetIds))
-                """)
-                .param("now", Timestamp.from(now))
-                .param("tenantId", product.getTenantId())
-                .param("productId", product.getId())
-                .param("keepTargets", !targetIds.isEmpty())
-                .param("targetIds", targetIds.isEmpty() ? List.of("__none__") : targetIds)
-                .update();
-
-        for (String accountId : targetIds) {
-            queueMarketplaceTarget(product, accountId, now);
-        }
     }
 
     private void requireConnectedMarketplaceAccount(String tenantId, String accountId) {

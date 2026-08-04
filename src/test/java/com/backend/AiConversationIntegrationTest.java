@@ -1,5 +1,6 @@
 package com.backend;
 
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
@@ -30,7 +31,9 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.backend.security.TenantPrincipal;
+import com.backend.service.ApiException;
 import com.backend.service.AiBackendClient;
+import com.backend.service.ChatBackendClient;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -40,6 +43,7 @@ class AiConversationIntegrationTest {
     private static final String USER_ID = "92000000-0000-0000-0000-000000000001";
     private static final String CONVERSATION_ID = "93000000-0000-0000-0000-000000000001";
     private static final String MESSAGE_ID = "94000000-0000-0000-0000-000000000001";
+    private static final String HANDOFF_ID = "96000000-0000-0000-0000-000000000001";
 
     @DynamicPropertySource
     static void aiConversationDatabase(DynamicPropertyRegistry registry) {
@@ -55,6 +59,9 @@ class AiConversationIntegrationTest {
 
     @MockitoBean
     private AiBackendClient aiBackendClient;
+
+    @MockitoBean
+    private ChatBackendClient chatBackendClient;
 
     @BeforeEach
     void seed() {
@@ -84,6 +91,8 @@ class AiConversationIntegrationTest {
     @AfterEach
     void cleanup() {
         jdbcClient.sql("DELETE FROM messages WHERE id = :id").param("id", MESSAGE_ID).update();
+        jdbcClient.sql("DELETE FROM human_handoffs WHERE id = :id")
+                .param("id", HANDOFF_ID).update();
         jdbcClient.sql("DELETE FROM conversations WHERE id = :id")
                 .param("id", CONVERSATION_ID).update();
         jdbcClient.sql("DELETE FROM tenant_users WHERE id = :id").param("id", USER_ID).update();
@@ -114,6 +123,15 @@ class AiConversationIntegrationTest {
 
     @Test
     void modeUpdateIsTenantScopedAndRequiresSuggestPermission() throws Exception {
+        jdbcClient.sql("""
+                INSERT INTO human_handoffs (id, tenant_id, conversation_id, status)
+                VALUES (:id, :tenantId, :conversationId, 'REQUESTED')
+                """)
+                .param("id", HANDOFF_ID)
+                .param("tenantId", TENANT_ID)
+                .param("conversationId", CONVERSATION_ID)
+                .update();
+
         mockMvc.perform(patch("/api/ai/conversations/{id}/mode", CONVERSATION_ID)
                         .with(authentication(aiAuthentication("AI.SUGGEST")))
                         .with(csrf())
@@ -128,6 +146,13 @@ class AiConversationIntegrationTest {
                 .query(String.class)
                 .single();
         org.assertj.core.api.Assertions.assertThat(storedMode).isEqualTo("AUTO");
+        String handoffStatus = jdbcClient.sql(
+                "SELECT status FROM human_handoffs WHERE id = :id")
+                .param("id", HANDOFF_ID)
+                .query(String.class)
+                .single();
+        org.assertj.core.api.Assertions.assertThat(handoffStatus).isEqualTo("CANCELLED");
+        verify(chatBackendClient).scanPendingAutopilotMessage(TENANT_ID, CONVERSATION_ID);
 
         mockMvc.perform(patch("/api/ai/conversations/{id}/mode", CONVERSATION_ID)
                         .with(authentication(aiAuthentication("ORDER.READ")))
@@ -135,6 +160,31 @@ class AiConversationIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"mode\":\"HUMAN_ONLY\"}"))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void failedAutopilotScanReturnsConversationToHumanMode() throws Exception {
+        doThrow(new ApiException(
+                org.springframework.http.HttpStatus.BAD_GATEWAY,
+                "CHAT_BACKEND_UNAVAILABLE",
+                "Chat Backend unavailable"))
+                .when(chatBackendClient)
+                .scanPendingAutopilotMessage(TENANT_ID, CONVERSATION_ID);
+
+        mockMvc.perform(patch("/api/ai/conversations/{id}/mode", CONVERSATION_ID)
+                        .with(authentication(aiAuthentication("AI.SUGGEST")))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"mode\":\"AUTO\"}"))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.code").value("CHAT_BACKEND_UNAVAILABLE"));
+
+        String storedMode = jdbcClient.sql(
+                "SELECT ai_mode FROM conversations WHERE id = :id")
+                .param("id", CONVERSATION_ID)
+                .query(String.class)
+                .single();
+        org.assertj.core.api.Assertions.assertThat(storedMode).isEqualTo("HUMAN_ONLY");
     }
 
     private Authentication aiAuthentication(String permission) {

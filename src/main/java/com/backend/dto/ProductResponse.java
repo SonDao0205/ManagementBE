@@ -27,6 +27,8 @@ public record ProductResponse(
             String id,
             String sku,
             String variantName,
+            String color,
+            String size,
             BigDecimal price,
             Integer stockQuantity,
             Integer reservedStock,

@@ -21,7 +21,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -155,14 +154,6 @@ public class MarketplaceSyncService {
                     "Shop chưa được kết nối hoặc access token đã hết hạn.");
         }
         return syncAccounts(List.of(account), null);
-    }
-
-    @Scheduled(
-            fixedDelayString = "${app.marketplace.sync-interval-ms:5000}",
-            initialDelayString = "${app.marketplace.sync-initial-delay-ms:3000}")
-    public void scheduledSync() {
-        syncAccounts(accountRepository
-                .findByConnectionStatusAndDeletedAtIsNull("CONNECTED"), null);
     }
 
     private MarketplaceSyncResponse syncAccounts(
@@ -401,12 +392,19 @@ public class MarketplaceSyncService {
                                 product.getName(),
                                 product.getDescription(),
                                 variants.stream().map(variant ->
-                                        new MarketplaceConnector.ProductVariantPublishRequest(
-                                                variant.getId(),
-                                                variant.getSku(),
-                                                variant.getPrice(),
-                                                Math.max(0, variant.getStockQuantity() == null
-                                                        ? 0 : variant.getStockQuantity())))
+                                        {
+                                            Map<String, Object> attributes = productAttributes(
+                                                    variant.getAttributesJson());
+                                            return new MarketplaceConnector.ProductVariantPublishRequest(
+                                                    variant.getId(),
+                                                    variant.getVariantName(),
+                                                    variant.getSku(),
+                                                    nullableAttribute(attributes, "color"),
+                                                    nullableAttribute(attributes, "size"),
+                                                    variant.getPrice(),
+                                                    Math.max(0, variant.getStockQuantity() == null
+                                                            ? 0 : variant.getStockQuantity()));
+                                        })
                                         .toList());
                 MarketplaceConnector.ProductPublishResult result =
                         connector.publishProduct(accessToken, request);
@@ -813,8 +811,17 @@ public class MarketplaceSyncService {
             value.setCreatedAt(now);
             return value;
         });
-        variant.setVariantName(textOr(row, "seller_sku", externalSkuId));
-        variant.setAttributesJson(json(Map.of("externalSkuId", externalSkuId)));
+        variant.setVariantName(firstNonBlank(
+                nullableText(row, "variant_name"),
+                nullableText(row, "sku_name"),
+                nullableText(row, "seller_sku"),
+                externalSkuId));
+        Map<String, Object> attributes = productAttributes(variant.getAttributesJson());
+        attributes.put("externalSkuId", externalSkuId);
+        Map<String, String> normalized = normalizedVariantAttributes(row);
+        putIfPresent(attributes, "color", normalized.get("color"));
+        putIfPresent(attributes, "size", normalized.get("size"));
+        variant.setAttributesJson(json(attributes));
         variant.setPrice(decimal(row.get("price")));
         variant.setCompareAtPrice(null);
         variant.setCurrency(textOr(row, "currency", "VND"));
@@ -1316,6 +1323,94 @@ public class MarketplaceSyncService {
         } catch (JsonProcessingException exception) {
             return new LinkedHashMap<>();
         }
+    }
+
+    private Map<String, String> normalizedVariantAttributes(Map<String, Object> row) {
+        Map<String, String> result = new LinkedHashMap<>();
+        putIfPresent(result, "color", firstNonBlank(
+                nullableText(row, "color"),
+                nullableText(row, "colour"),
+                nullableText(row, "color_name"),
+                nullableText(row, "color_family")));
+        putIfPresent(result, "size", firstNonBlank(
+                nullableText(row, "size"),
+                nullableText(row, "size_name")));
+        for (String key : List.of(
+                "sales_attributes_json", "sales_attributes", "variation_json",
+                "variation", "attributes_json", "attributes")) {
+            extractVariantAttributes(row.get(key), result);
+        }
+        return result;
+    }
+
+    private void extractVariantAttributes(Object raw, Map<String, String> target) {
+        Object value = raw;
+        if (raw instanceof String string && !string.isBlank()) {
+            try {
+                value = objectMapper.readValue(string, Object.class);
+            } catch (JsonProcessingException ignored) {
+                return;
+            }
+        }
+        if (value instanceof List<?> list) {
+            list.forEach(item -> extractVariantAttributes(item, target));
+            return;
+        }
+        if (!(value instanceof Map<?, ?> map)) return;
+        String key = firstNonBlank(
+                mapText(map, "id"), mapText(map, "name"), mapText(map, "attribute_name"));
+        String attributeValue = firstNonBlank(
+                mapText(map, "value_name"), mapText(map, "value"), mapText(map, "attribute_value"));
+        putNormalizedAttribute(target, key, attributeValue);
+        map.forEach((nestedKey, nestedValue) -> {
+            String candidateKey = nestedKey == null ? "" : nestedKey.toString();
+            if (nestedValue instanceof Map<?, ?> || nestedValue instanceof List<?>) {
+                extractVariantAttributes(nestedValue, target);
+            } else {
+                putNormalizedAttribute(target, candidateKey,
+                        nestedValue == null ? null : nestedValue.toString());
+            }
+        });
+    }
+
+    private static void putNormalizedAttribute(
+            Map<String, String> target,
+            String rawKey,
+            String value) {
+        String key = normalizeAttributeKey(rawKey);
+        if (Set.of("color", "colour", "colorfamily", "mau", "mausac").contains(key)) {
+            putIfPresent(target, "color", value);
+        } else if (Set.of("size", "kichthuoc", "kíchthước").contains(key)) {
+            putIfPresent(target, "size", value);
+        }
+    }
+
+    private static String normalizeAttributeKey(String value) {
+        return value == null ? "" : java.text.Normalizer.normalize(
+                value.toLowerCase(Locale.ROOT), java.text.Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "")
+                .replaceAll("[^a-z0-9]", "");
+    }
+
+    private static String mapText(Map<?, ?> map, String key) {
+        Object value = map.get(key);
+        return value == null ? null : value.toString().trim();
+    }
+
+    private static String firstNonBlank(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) return value.trim();
+        }
+        return null;
+    }
+
+    private static String nullableAttribute(Map<String, Object> attributes, String key) {
+        Object value = attributes.get(key);
+        return value == null || value.toString().isBlank() ? null : value.toString().trim();
+    }
+
+    private static <T> void putIfPresent(Map<String, T> map, String key, T value) {
+        if (value != null && !value.toString().isBlank()) map.put(key, value);
     }
 
     private String jsonValue(Object value) {

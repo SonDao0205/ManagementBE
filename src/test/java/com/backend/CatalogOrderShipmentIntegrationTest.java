@@ -316,7 +316,7 @@ class CatalogOrderShipmentIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"status\":\"DELIVERED\"}"))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("INVALID_ORDER_STATUS_TRANSITION"));
+                .andExpect(jsonPath("$.code").value("MARKETPLACE_OWNS_ORDER_STATUS"));
 
         mockMvc.perform(get("/api/v1/shipments/track/{code}", "TRACK-001")
                         .with(authentication(featureAuthentication())))
@@ -340,6 +340,41 @@ class CatalogOrderShipmentIntegrationTest {
                         .with(authentication(featureAuthentication())))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("SHIPMENT_NOT_FOUND"));
+    }
+
+    @Test
+    void customerSupportCanReadProductsAndOrdersButCannotChangeThem() throws Exception {
+        mockMvc.perform(get("/api/v1/products")
+                        .with(authentication(customerSupportAuthentication())))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/products")
+                        .with(authentication(customerSupportAuthentication()))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name":"Sản phẩm CSKH không được tạo",
+                                  "productCode":"CSKH-READ-ONLY"
+                                }
+                                """))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/api/v1/orders")
+                        .with(authentication(customerSupportAuthentication())))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(put("/api/v1/orders/{id}/status", ORDER_ID)
+                        .with(authentication(customerSupportAuthentication()))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"CONFIRMED\"}"))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(post("/api/marketplace-connections/sync")
+                        .with(authentication(customerSupportAuthentication()))
+                        .with(csrf()))
+                .andExpect(status().isForbidden());
     }
 
     private void seedOrderAndShipment() {
@@ -429,6 +464,35 @@ class CatalogOrderShipmentIntegrationTest {
                         "PRODUCT.DELETE", "ORDER.READ", "ORDER.FULFILL"),
                 false, Instant.now().plusSeconds(3600));
         return new UsernamePasswordAuthenticationToken(
-                principal, null, List.of(new SimpleGrantedAuthority("SESSION_AUTHENTICATED")));
+                principal, null, List.of(
+                        new SimpleGrantedAuthority("SESSION_AUTHENTICATED"),
+                        new SimpleGrantedAuthority("ROLE_TENANT_MANAGER"),
+                        new SimpleGrantedAuthority("PRODUCT.READ"),
+                        new SimpleGrantedAuthority("PRODUCT.CREATE"),
+                        new SimpleGrantedAuthority("PRODUCT.UPDATE"),
+                        new SimpleGrantedAuthority("PRODUCT.DELETE"),
+                        new SimpleGrantedAuthority("ORDER.READ"),
+                        new SimpleGrantedAuthority("ORDER.FULFILL")));
+    }
+
+    private Authentication customerSupportAuthentication() {
+        TenantPrincipal principal = new TenantPrincipal(
+                "test-cs-session", USER_ID, "support@example.test", "Nhân viên CSKH", null,
+                TENANT_ID, "FEATURE_SHOP", "Cửa hàng kiểm thử chức năng",
+                List.of("CS_AGENT"), List.of("PRODUCT.READ", "ORDER.READ",
+                        "CHAT.READ", "CHAT.REPLY", "CHAT.ASSIGN",
+                        "AI.SUGGEST", "AI.APPROVE"),
+                false, Instant.now().plusSeconds(3600));
+        return new UsernamePasswordAuthenticationToken(
+                principal, null, List.of(
+                        new SimpleGrantedAuthority("SESSION_AUTHENTICATED"),
+                        new SimpleGrantedAuthority("ROLE_CS_AGENT"),
+                        new SimpleGrantedAuthority("PRODUCT.READ"),
+                        new SimpleGrantedAuthority("ORDER.READ"),
+                        new SimpleGrantedAuthority("CHAT.READ"),
+                        new SimpleGrantedAuthority("CHAT.REPLY"),
+                        new SimpleGrantedAuthority("CHAT.ASSIGN"),
+                        new SimpleGrantedAuthority("AI.SUGGEST"),
+                        new SimpleGrantedAuthority("AI.APPROVE")));
     }
 }

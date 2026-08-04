@@ -43,13 +43,13 @@ public record ProductRequest(
         String status,
 
         @Valid
-        List<VariantRequest> variants,
-
-        List<@Size(max = 36) String> marketplaceAccountIds) {
+        List<VariantRequest> variants) {
 
     public record VariantRequest(
             @NotBlank @Size(max = 200) String sku,
             @Size(max = 255) String variantName,
+            @Size(max = 100) String color,
+            @Size(max = 100) String size,
             @DecimalMin("0") BigDecimal price,
             @Min(0) Integer stockQuantity) {
     }

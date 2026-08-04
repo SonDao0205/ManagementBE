@@ -52,7 +52,7 @@ public class ProductController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAuthority('SESSION_AUTHENTICATED')")
+    @PreAuthorize("hasAuthority('PRODUCT.READ')")
     @Operation(summary = "Liệt kê sản phẩm của tenant, có thể tìm kiếm và lọc theo status")
     public Page<ProductResponse> list(
             @AuthenticationPrincipal TenantPrincipal principal,
@@ -64,7 +64,7 @@ public class ProductController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAuthority('SESSION_AUTHENTICATED')")
+    @PreAuthorize("hasAuthority('PRODUCT.READ')")
     @Operation(summary = "Lấy chi tiết một sản phẩm theo ID")
     public ProductResponse getById(
             @AuthenticationPrincipal TenantPrincipal principal,
@@ -73,7 +73,7 @@ public class ProductController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('SESSION_AUTHENTICATED')")
+    @PreAuthorize("hasAuthority('PRODUCT.CREATE')")
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(summary = "Tạo sản phẩm mới cho tenant")
     public ProductResponse create(
@@ -83,7 +83,7 @@ public class ProductController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAuthority('SESSION_AUTHENTICATED')")
+    @PreAuthorize("hasAuthority('PRODUCT.UPDATE')")
     @Operation(summary = "Cập nhật thông tin sản phẩm")
     public ProductResponse update(
             @AuthenticationPrincipal TenantPrincipal principal,
@@ -93,7 +93,7 @@ public class ProductController {
     }
 
     @PostMapping("/marketplace-sync")
-    @PreAuthorize("hasAuthority('SESSION_AUTHENTICATED')")
+    @PreAuthorize("hasAuthority('PRODUCT.UPDATE')")
     @Operation(summary = "Xếp hàng đăng các sản phẩm được chọn lên một hoặc nhiều shop")
     public ProductMarketplaceSyncResponse queueMarketplaceSync(
             @AuthenticationPrincipal TenantPrincipal principal,
@@ -102,7 +102,7 @@ public class ProductController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('SESSION_AUTHENTICATED')")
+    @PreAuthorize("hasAuthority('PRODUCT.DELETE')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @Operation(summary = "Xóa mềm sản phẩm (soft delete)")
     public void delete(
@@ -112,7 +112,7 @@ public class ProductController {
     }
 
     @PostMapping("/{id}/adjust-stock")
-    @PreAuthorize("hasAuthority('SESSION_AUTHENTICATED')")
+    @PreAuthorize("hasAuthority('PRODUCT.UPDATE')")
     @Operation(summary = "Điều chỉnh tồn kho (delta dương = nhập, delta âm = xuất)")
     public ProductResponse adjustStock(
             @AuthenticationPrincipal TenantPrincipal principal,
@@ -122,7 +122,7 @@ public class ProductController {
     }
 
     @PostMapping(value = "/{id}/media", consumes = org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasAuthority('SESSION_AUTHENTICATED')")
+    @PreAuthorize("hasAuthority('PRODUCT.UPDATE')")
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(summary = "Tải nhiều ảnh hoặc video của sản phẩm lên Cloudinary")
     public java.util.List<ProductMediaResponse> uploadMedia(
@@ -133,7 +133,7 @@ public class ProductController {
     }
 
     @PutMapping("/{id}/media/order")
-    @PreAuthorize("hasAuthority('SESSION_AUTHENTICATED')")
+    @PreAuthorize("hasAuthority('PRODUCT.UPDATE')")
     @Operation(summary = "Sắp xếp media và chọn media chính")
     public java.util.List<ProductMediaResponse> reorderMedia(
             @AuthenticationPrincipal TenantPrincipal principal,
@@ -143,7 +143,7 @@ public class ProductController {
     }
 
     @DeleteMapping("/{id}/media/{mediaId}")
-    @PreAuthorize("hasAuthority('SESSION_AUTHENTICATED')")
+    @PreAuthorize("hasAuthority('PRODUCT.UPDATE')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @Operation(summary = "Xóa media khỏi sản phẩm và Cloudinary")
     public void deleteMedia(

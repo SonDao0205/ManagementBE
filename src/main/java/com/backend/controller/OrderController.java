@@ -27,13 +27,13 @@ import jakarta.validation.constraints.Min;
 @RequestMapping("/api/v1/orders")
 @Tag(name = "Order Management")
 @RequiredArgsConstructor
-@PreAuthorize("hasAuthority('SESSION_AUTHENTICATED')")
 @Validated
 public class OrderController {
 
     private final OrderService orderService;
 
     @GetMapping
+    @PreAuthorize("hasAuthority('ORDER.READ')")
     public Page<OrderResponse> list(
             @AuthenticationPrincipal TenantPrincipal principal,
             @RequestParam(required = false) String search,
@@ -46,6 +46,7 @@ public class OrderController {
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("hasAuthority('ORDER.READ')")
     public OrderResponse getById(
             @AuthenticationPrincipal TenantPrincipal principal,
             @PathVariable String id
@@ -54,6 +55,7 @@ public class OrderController {
     }
 
     @PutMapping("/{id}/status")
+    @PreAuthorize("hasAuthority('ORDER.FULFILL')")
     public OrderResponse updateStatus(
             @AuthenticationPrincipal TenantPrincipal principal,
             @PathVariable String id,

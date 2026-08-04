@@ -29,7 +29,8 @@ import com.backend.security.TenantSessionAuthenticationFilter;
         MarketplaceProperties.class,
         CloudinaryProperties.class,
         StaffMailProperties.class,
-        AiBackendProperties.class
+        AiBackendProperties.class,
+        ChatBackendProperties.class
 })
 public class SecurityConfig {
 

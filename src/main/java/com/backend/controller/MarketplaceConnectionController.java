@@ -104,7 +104,7 @@ public class MarketplaceConnectionController {
     }
 
     @PostMapping("/sync")
-    @PreAuthorize("hasAuthority('SESSION_AUTHENTICATED')")
+    @PreAuthorize("hasAuthority('PRODUCT.UPDATE')")
     @Operation(summary = "Đồng bộ sản phẩm và đơn hàng từ toàn bộ shop đã liên kết")
     public MarketplaceSyncResponse syncAll(
             @AuthenticationPrincipal TenantPrincipal principal,
@@ -115,7 +115,7 @@ public class MarketplaceConnectionController {
     }
 
     @PostMapping("/{accountId}/sync")
-    @PreAuthorize("hasAuthority('SESSION_AUTHENTICATED')")
+    @PreAuthorize("hasAuthority('PRODUCT.UPDATE')")
     @Operation(summary = "Đồng bộ sản phẩm và đơn hàng từ một shop đã liên kết")
     public MarketplaceSyncResponse syncAccount(
             @AuthenticationPrincipal TenantPrincipal principal,

@@ -21,8 +21,10 @@ import org.springframework.web.bind.annotation.RestController;
 import com.backend.dto.AiShopContextActivationRequest;
 import com.backend.dto.AiShopContextRequest;
 import com.backend.dto.AiShopContextResponse;
+import com.backend.dto.AiShopKnowledgeStatusResponse;
 import com.backend.security.TenantPrincipal;
 import com.backend.service.AiShopContextService;
+import com.backend.service.ChatBackendClient;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -38,9 +40,13 @@ import jakarta.validation.constraints.Size;
 public class AiShopContextController {
 
     private final AiShopContextService contextService;
+    private final ChatBackendClient chatBackendClient;
 
-    public AiShopContextController(AiShopContextService contextService) {
+    public AiShopContextController(
+            AiShopContextService contextService,
+            ChatBackendClient chatBackendClient) {
         this.contextService = contextService;
+        this.chatBackendClient = chatBackendClient;
     }
 
     @GetMapping
@@ -86,4 +92,13 @@ public class AiShopContextController {
             @PathVariable String contextId) {
         contextService.delete(principal, contextId);
     }
+
+    @GetMapping("/shop-knowledge/status")
+    @Operation(summary = "Xem trạng thái chuẩn bị kiến thức sản phẩm của shop")
+    public AiShopKnowledgeStatusResponse knowledgeStatus(
+            @AuthenticationPrincipal TenantPrincipal principal,
+            @RequestParam @NotBlank @Size(max = 36) String shopId) {
+        return chatBackendClient.getShopKnowledgeStatus(principal.tenantId(), shopId);
+    }
+
 }

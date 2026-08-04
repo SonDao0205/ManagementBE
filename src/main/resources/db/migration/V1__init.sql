@@ -1747,6 +1747,33 @@ CREATE INDEX IF NOT EXISTS idx_ai_shop_contexts_tenant_shop
     ON ai_shop_contexts (tenant_id, marketplace_account_id, created_at DESC)
     WHERE deleted_at IS NULL;
 
+CREATE TABLE IF NOT EXISTS ai_shop_knowledge_status (
+  tenant_id VARCHAR(36) NOT NULL,
+  marketplace_account_id VARCHAR(36) NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'BUILDING',
+  catalog_version VARCHAR(64) NULL,
+  product_count INTEGER NOT NULL DEFAULT 0,
+  variant_count INTEGER NOT NULL DEFAULT 0,
+  missing_color_count INTEGER NOT NULL DEFAULT 0,
+  missing_size_count INTEGER NOT NULL DEFAULT 0,
+  indexed_points INTEGER NOT NULL DEFAULT 0,
+  cache_status VARCHAR(20) NOT NULL DEFAULT 'EMPTY',
+  vector_status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+  last_built_at TIMESTAMPTZ(3) NULL,
+  last_indexed_at TIMESTAMPTZ(3) NULL,
+  last_error TEXT NULL,
+  created_at TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (tenant_id, marketplace_account_id),
+  CONSTRAINT fk_ai_shop_knowledge_status_account
+      FOREIGN KEY (marketplace_account_id, tenant_id)
+      REFERENCES marketplace_accounts(id, tenant_id)
+      ON UPDATE RESTRICT ON DELETE CASCADE,
+  CONSTRAINT ck_ai_shop_knowledge_status_state
+      CHECK (status IN ('BUILDING', 'READY', 'DEGRADED', 'FAILED'))
+);
+COMMENT ON TABLE ai_shop_knowledge_status IS 'Build, cache and vector-index health for isolated shop catalog knowledge';
+
 CREATE TABLE IF NOT EXISTS knowledge_documents (
   id VARCHAR(36) NOT NULL,
   tenant_id VARCHAR(36) NOT NULL,

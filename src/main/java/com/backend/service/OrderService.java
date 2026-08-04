@@ -38,13 +38,10 @@ public class OrderService {
             "DELIVERED", "CANCELLED", "RETURN_REQUESTED", "RETURNED", "FAILED");
 
     private static final Map<String, Set<String>> ALLOWED_TRANSITIONS = Map.of(
-            "CREATED", Set.of("CONFIRMED", "CANCELLED"),
-            "CONFIRMED", Set.of("READY_TO_SHIP", "CANCELLED"),
-            "READY_TO_SHIP", Set.of("SHIPPED", "CANCELLED"),
-            "SHIPPED", Set.of("IN_TRANSIT", "DELIVERED", "FAILED"),
-            "IN_TRANSIT", Set.of("DELIVERED", "RETURN_REQUESTED", "FAILED"),
-            "DELIVERED", Set.of("RETURN_REQUESTED"),
-            "RETURN_REQUESTED", Set.of("RETURNED"));
+            "CREATED", Set.of("CONFIRMED"),
+            "CONFIRMED", Set.of("READY_TO_SHIP"));
+    private static final Set<String> STAFF_MANAGED_STATUSES = Set.of(
+            "CONFIRMED", "READY_TO_SHIP");
 
     private final OrderRepository orderRepository;
     private final OrderItemRepository orderItemRepository;
@@ -102,6 +99,13 @@ public class OrderService {
 
         if (newStatus.equals(currentStatus)) {
             return toResponse(order);
+        }
+        if (!STAFF_MANAGED_STATUSES.contains(newStatus)) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "MARKETPLACE_OWNS_ORDER_STATUS",
+                    "Nhân viên chỉ có thể xác nhận đơn và đánh dấu sẵn sàng bàn giao. "
+                            + "Các trạng thái vận chuyển, giao hàng, hủy và hoàn tiền do sàn cập nhật.");
         }
         if (!ALLOWED_TRANSITIONS.getOrDefault(currentStatus, Set.of()).contains(newStatus)) {
             throw new ApiException(HttpStatus.CONFLICT, "INVALID_ORDER_STATUS_TRANSITION",
