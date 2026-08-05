@@ -36,8 +36,20 @@ out/
 ### VS Code ###
 .vscode/
 
-# Custom ignores
-src/main/resources/application.properties
 
 # macOS
 **/.DS_Store
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+secrets/
+src/main/resources/application-local.properties
+src/main/resources/application-secret.properties
+
+# Certificates and private keys
+*.pem
+*.key
+*.p12
+*.jks
