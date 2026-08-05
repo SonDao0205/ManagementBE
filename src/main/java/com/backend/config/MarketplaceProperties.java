@@ -18,25 +18,23 @@ public record MarketplaceProperties(
         authorizationTtl = authorizationTtl == null
                 ? Duration.ofMinutes(10)
                 : authorizationTtl;
-        credentialEncryptionKey = defaultValue(
+        credentialEncryptionKey = requiredValue(
                 credentialEncryptionKey,
-                "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=");
-        if (Base64.getDecoder().decode(credentialEncryptionKey).length != 32) {
+                "app.marketplace.credential-encryption-key");
+        byte[] decodedKey;
+        try {
+            decodedKey = Base64.getDecoder().decode(credentialEncryptionKey);
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException(
+                    "Marketplace credential encryption key must be valid Base64",
+                    exception);
+        }
+        if (decodedKey.length != 32) {
             throw new IllegalArgumentException(
                     "Marketplace credential encryption key must decode to 32 bytes");
         }
-        tiktok = tiktok == null
-                ? new Provider(
-                        "http://localhost:4011",
-                        "omni-tiktok-local",
-                        "tiktok-local-secret-change-me")
-                : tiktok;
-        lazada = lazada == null
-                ? new Provider(
-                        "http://localhost:4012",
-                        "omni-lazada-local",
-                        "lazada-local-secret-change-me")
-                : lazada;
+        tiktok = requiredProvider(tiktok, "TikTok Shop");
+        lazada = requiredProvider(lazada, "Lazada");
     }
 
     public Provider provider(String marketplaceCode) {
@@ -50,6 +48,20 @@ public record MarketplaceProperties(
 
     private static String defaultValue(String value, String fallback) {
         return value == null || value.isBlank() ? fallback : value;
+    }
+
+    private static String requiredValue(String value, String propertyName) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(propertyName + " must be configured");
+        }
+        return value.trim();
+    }
+
+    private static Provider requiredProvider(Provider provider, String providerName) {
+        if (provider == null) {
+            throw new IllegalArgumentException(providerName + " configuration is incomplete");
+        }
+        return provider;
     }
 
     public record Provider(String baseUrl, String clientId, String clientSecret) {

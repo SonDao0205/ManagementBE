@@ -53,4 +53,14 @@ dependencies {
 
 tasks.named('test') {
     useJUnitPlatform()
+    def testKey = new byte[32]
+    new java.security.SecureRandom().nextBytes(testKey)
+    environment 'APP_MARKETPLACE_CREDENTIAL_ENCRYPTION_KEY',
+            java.util.Base64.encoder.encodeToString(testKey)
+    environment 'APP_MARKETPLACE_TIKTOK_BASE_URL', 'http://127.0.0.1:4011'
+    environment 'APP_MARKETPLACE_TIKTOK_CLIENT_ID', 'integration-test-client'
+    environment 'APP_MARKETPLACE_TIKTOK_CLIENT_SECRET', java.util.UUID.randomUUID().toString()
+    environment 'APP_MARKETPLACE_LAZADA_BASE_URL', 'http://127.0.0.1:4012'
+    environment 'APP_MARKETPLACE_LAZADA_CLIENT_ID', 'integration-test-client'
+    environment 'APP_MARKETPLACE_LAZADA_CLIENT_SECRET', java.util.UUID.randomUUID().toString()
 }

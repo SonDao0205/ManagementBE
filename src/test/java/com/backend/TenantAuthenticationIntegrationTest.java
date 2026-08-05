@@ -61,12 +61,12 @@ class TenantAuthenticationIntegrationTest {
         registry.add("app.marketplace.tiktok.client-id", () -> "omni-tiktok-local");
         registry.add(
                 "app.marketplace.tiktok.client-secret",
-                () -> "tiktok-local-secret-change-me");
+                () -> java.util.UUID.randomUUID().toString());
         registry.add("app.marketplace.lazada.base-url", () -> baseUrl);
         registry.add("app.marketplace.lazada.client-id", () -> "omni-lazada-local");
         registry.add(
                 "app.marketplace.lazada.client-secret",
-                () -> "lazada-local-secret-change-me");
+                () -> java.util.UUID.randomUUID().toString());
     }
 
     @AfterAll
