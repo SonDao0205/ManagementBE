@@ -553,7 +553,7 @@ class TenantAuthenticationIntegrationTest {
                                 .content("""
                                         {
                                           "marketplace": "TIKTOK_SHOP",
-                                          "returnUrl": "http://localhost:5173/connect"
+                                          "returnUrl": "https://app.managementomni.me/connect"
                                         }
                                         """))
                 .andExpect(status().isOk())
@@ -572,6 +572,7 @@ class TenantAuthenticationIntegrationTest {
                 .andExpect(status().isFound())
                 .andExpect(result -> assertThat(
                         result.getResponse().getHeader("Location"))
+                        .startsWith("https://app.managementomni.me/connect?")
                         .contains("connection=success")
                         .contains("marketplace=TIKTOK_SHOP"));
 

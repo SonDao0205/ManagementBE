@@ -44,6 +44,7 @@ import com.backend.service.MarketplaceConnectionService;
 public class MarketplaceConnectionServiceImpl implements MarketplaceConnectionService {
 
     private static final String CONNECTED = "CONNECTED";
+    private static final String PRODUCTION_FRONTEND_HOST = "app.managementomni.me";
     private static final List<String> REQUESTED_SCOPES = List.of(
             "product.read",
             "product.write",
@@ -590,9 +591,13 @@ public class MarketplaceConnectionServiceImpl implements MarketplaceConnectionSe
             URI uri = URI.create(returnUrl);
             boolean localHost = "localhost".equalsIgnoreCase(uri.getHost())
                     || "127.0.0.1".equals(uri.getHost());
-            if (!"http".equalsIgnoreCase(uri.getScheme())
-                    || !localHost
-                    || uri.getPort() < 1
+            boolean localFrontend = "http".equalsIgnoreCase(uri.getScheme())
+                    && localHost
+                    && uri.getPort() >= 1;
+            boolean productionFrontend = "https".equalsIgnoreCase(uri.getScheme())
+                    && PRODUCTION_FRONTEND_HOST.equalsIgnoreCase(uri.getHost())
+                    && uri.getPort() == -1;
+            if ((!localFrontend && !productionFrontend)
                     || !"/connect".equals(uri.getPath())
                     || uri.getUserInfo() != null
                     || uri.getFragment() != null) {
@@ -602,7 +607,7 @@ public class MarketplaceConnectionServiceImpl implements MarketplaceConnectionSe
         } catch (IllegalArgumentException exception) {
             throw badRequest(
                     "INVALID_RETURN_URL",
-                    "Địa chỉ quay lại phải là trang /connect của localhost.");
+                    "Địa chỉ quay lại phải là trang /connect được cho phép.");
         }
     }
 
