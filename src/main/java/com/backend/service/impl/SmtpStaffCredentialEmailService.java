@@ -33,7 +33,7 @@ public class SmtpStaffCredentialEmailService implements StaffCredentialEmailServ
         SimpleMailMessage message = new SimpleMailMessage();
         message.setFrom(properties.from());
         message.setTo(email);
-        message.setSubject("[OmnichannelPOS] Tài khoản nhân viên CSKH");
+        message.setSubject("[SmartHub] Tài khoản nhân viên CSKH");
         message.setText("""
                 Xin chào %s,
 
@@ -45,7 +45,7 @@ public class SmtpStaffCredentialEmailService implements StaffCredentialEmailServ
 
                 Vui lòng đổi mật khẩu ngay trong lần đăng nhập đầu tiên và không chia sẻ email này.
 
-                OmnichannelPOS
+                SmartHub
                 """.formatted(
                 displayName,
                 tenantName,

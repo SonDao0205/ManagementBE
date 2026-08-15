@@ -690,7 +690,7 @@ public class MarketplaceSyncService {
         ProductLink link = existingLink.orElseGet(() -> new ProductLink(
                 UUID.randomUUID().toString(), UUID.randomUUID().toString(),
                 externalProductId, null, null, null));
-        boolean publishedFromOmnichannel = canonicalProductId != null
+        boolean publishedFromSmartHub = canonicalProductId != null
                 && canonicalProductId.equals(link.productId());
         ProductEntity product = productRepository.findById(link.productId()).orElseGet(() -> {
             ProductEntity value = new ProductEntity();
@@ -704,7 +704,7 @@ public class MarketplaceSyncService {
         });
         product.setName(textOr(first, "title", externalProductId));
         product.setDescription(nullableText(first, "description"));
-        if (!publishedFromOmnichannel || product.getCategory() == null) {
+        if (!publishedFromSmartHub || product.getCategory() == null) {
             product.setCategory(marketplaceCode);
         }
         product.setStatus(productStatus(text(first, "status")));
@@ -899,6 +899,15 @@ public class MarketplaceSyncService {
                     value.setCreatedAt(now);
                     return value;
                 });
+        String externalCustomerId = firstNonBlank(
+                nullableText(first, "customer_external_id"),
+                nullableText(first, "buyer_user_id"),
+                nullableText(first, "buyer_id"),
+                nullableText(first, "external_customer_id"));
+        if (externalCustomerId != null) {
+            order.setMarketplaceCustomerId(upsertMarketplaceCustomer(
+                    account, externalCustomerId, first, now));
+        }
         order.setRawStatus(textOr(first, "status", "unknown"));
         order.setStatus(orderStatus(textOr(first, "canonical_status", "CREATED")));
         order.setPaymentStatus(paymentStatus(textOr(first, "payment_status", "UNPAID")));
@@ -980,6 +989,119 @@ public class MarketplaceSyncService {
             count.orderItems += 1;
         }
         count.orders += 1;
+    }
+
+    private String upsertMarketplaceCustomer(
+            MarketplaceAccountEntity account,
+            String externalCustomerId,
+            Map<String, Object> source,
+            Instant now) {
+        String externalImUserId = nullableText(source, "customer_im_user_id");
+        Optional<String> existingCustomerId = externalImUserId == null
+                ? jdbcClient.sql("""
+                        SELECT id FROM marketplace_customers
+                        WHERE tenant_id=:tenantId
+                          AND marketplace_account_id=:accountId
+                          AND external_customer_id=:externalCustomerId
+                        LIMIT 1
+                        """)
+                        .param("tenantId", account.getTenantId())
+                        .param("accountId", account.getId())
+                        .param("externalCustomerId", externalCustomerId)
+                        .query(String.class)
+                        .optional()
+                : jdbcClient.sql("""
+                        SELECT id FROM marketplace_customers
+                        WHERE tenant_id=:tenantId
+                          AND marketplace_account_id=:accountId
+                          AND (external_customer_id=:externalCustomerId
+                               OR external_customer_id=:externalImUserId
+                               OR external_im_user_id=:externalImUserId)
+                        ORDER BY CASE
+                          WHEN external_customer_id=:externalImUserId THEN 0
+                          WHEN external_im_user_id=:externalImUserId THEN 1
+                          ELSE 2
+                        END
+                        LIMIT 1
+                        """)
+                        .param("tenantId", account.getTenantId())
+                        .param("accountId", account.getId())
+                        .param("externalCustomerId", externalCustomerId)
+                        .param("externalImUserId", externalImUserId)
+                        .query(String.class)
+                        .optional();
+
+        if (existingCustomerId.isPresent()) {
+            String customerId = existingCustomerId.get();
+            jdbcClient.sql("""
+                    UPDATE marketplace_customers SET
+                      external_im_user_id=COALESCE(:externalImUserId, external_im_user_id),
+                      display_name=COALESCE(:displayName, display_name),
+                      avatar_url=COALESCE(:avatarUrl, avatar_url),
+                      phone_masked=COALESCE(:phoneMasked, phone_masked),
+                      email_masked=COALESCE(:emailMasked, email_masked),
+                      raw_payload=CAST(:rawPayload AS jsonb),
+                      last_seen_at=:now,
+                      updated_at=:now
+                    WHERE id=:id AND tenant_id=:tenantId
+                    """)
+                    .param("externalImUserId", externalImUserId)
+                    .param("displayName", nullableText(source, "customer_name"))
+                    .param("avatarUrl", nullableText(source, "customer_avatar_url"))
+                    .param("phoneMasked", nullableText(source, "customer_phone_masked"))
+                    .param("emailMasked", nullableText(source, "customer_email_masked"))
+                    .param("rawPayload", json(source))
+                    .param("now", Timestamp.from(now))
+                    .param("id", customerId)
+                    .param("tenantId", account.getTenantId())
+                    .update();
+            return customerId;
+        }
+
+        return jdbcClient.sql("""
+                INSERT INTO marketplace_customers (
+                  id, tenant_id, marketplace_account_id, external_customer_id,
+                  external_im_user_id, display_name, avatar_url, phone_masked,
+                  email_masked, raw_payload, first_seen_at, last_seen_at,
+                  created_at, updated_at
+                ) VALUES (
+                  :id, :tenantId, :accountId, :externalCustomerId,
+                  :externalImUserId, :displayName, :avatarUrl, :phoneMasked,
+                  :emailMasked, CAST(:rawPayload AS jsonb), :now, :now, :now, :now
+                )
+                ON CONFLICT (marketplace_account_id, external_customer_id)
+                DO UPDATE SET
+                  external_im_user_id = COALESCE(
+                    EXCLUDED.external_im_user_id,
+                    marketplace_customers.external_im_user_id),
+                  display_name = COALESCE(
+                    EXCLUDED.display_name,
+                    marketplace_customers.display_name),
+                  avatar_url = COALESCE(EXCLUDED.avatar_url, marketplace_customers.avatar_url),
+                  phone_masked = COALESCE(
+                    EXCLUDED.phone_masked,
+                    marketplace_customers.phone_masked),
+                  email_masked = COALESCE(
+                    EXCLUDED.email_masked,
+                    marketplace_customers.email_masked),
+                  raw_payload = EXCLUDED.raw_payload,
+                  last_seen_at = EXCLUDED.last_seen_at,
+                  updated_at = EXCLUDED.updated_at
+                RETURNING id
+                """)
+                .param("id", UUID.randomUUID().toString())
+                .param("tenantId", account.getTenantId())
+                .param("accountId", account.getId())
+                .param("externalCustomerId", externalCustomerId)
+                .param("externalImUserId", externalImUserId)
+                .param("displayName", nullableText(source, "customer_name"))
+                .param("avatarUrl", nullableText(source, "customer_avatar_url"))
+                .param("phoneMasked", nullableText(source, "customer_phone_masked"))
+                .param("emailMasked", nullableText(source, "customer_email_masked"))
+                .param("rawPayload", json(source))
+                .param("now", Timestamp.from(now))
+                .query(String.class)
+                .single();
     }
 
     private void recordOrderStatus(

@@ -127,7 +127,7 @@ public class WeeklyAnalyticsEmailService {
             SimpleMailMessage message = new SimpleMailMessage();
             if (hasText(sender)) message.setFrom(sender);
             message.setTo(recipient);
-            message.setSubject("[OmnichannelPOS] Phân tích tuần - " + tenant.name());
+            message.setSubject("[SmartHub] Phân tích tuần - " + tenant.name());
             message.setText(reportText(tenant.name(), weekStart, report));
             mailSender.send(message);
             markSent(tenant.id(), weekStart, recipient);
@@ -203,7 +203,7 @@ public class WeeklyAnalyticsEmailService {
                 Tỷ suất lợi nhuận: %s%%
                 Tăng trưởng so với tuần trước: %s%%
 
-                OmnichannelPOS
+                SmartHub
                 """.formatted(
                 tenantName,
                 formatDate(weekStart),

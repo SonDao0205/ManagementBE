@@ -2,6 +2,7 @@ package com.backend.controller;
 
 import com.backend.dto.OrderResponse;
 import com.backend.dto.OrderStatusUpdateRequest;
+import com.backend.dto.OrderStatsResponse;
 import com.backend.security.TenantPrincipal;
 import com.backend.service.OrderService;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -41,7 +42,11 @@ public class OrderController {
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size
     ) {
-        PageRequest pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "externalCreatedAt"));
+        Sort newestFirst = Sort.by(
+                Sort.Order.desc("externalCreatedAt").nullsLast(),
+                Sort.Order.desc("createdAt"),
+                Sort.Order.desc("id"));
+        PageRequest pageable = PageRequest.of(page, size, newestFirst);
         return orderService.list(principal.tenantId(), search, status, pageable);
     }
 
@@ -52,6 +57,13 @@ public class OrderController {
             @PathVariable String id
     ) {
         return orderService.getById(principal.tenantId(), id);
+    }
+
+    @GetMapping("/stats")
+    @PreAuthorize("hasAuthority('ORDER.READ')")
+    public OrderStatsResponse stats(
+            @AuthenticationPrincipal TenantPrincipal principal) {
+        return orderService.stats(principal.tenantId());
     }
 
     @PutMapping("/{id}/status")

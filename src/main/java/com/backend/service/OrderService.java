@@ -18,6 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.backend.dto.OrderResponse;
+import com.backend.dto.OrderStatsResponse;
 import com.backend.dto.OrderStatusUpdateRequest;
 import com.backend.entity.OrderEntity;
 import com.backend.entity.OrderItemEntity;
@@ -87,6 +88,17 @@ public class OrderService {
     @Transactional(readOnly = true)
     public OrderResponse getById(String tenantId, String id) {
         return toResponse(findOrThrow(tenantId, id));
+    }
+
+    @Transactional(readOnly = true)
+    public OrderStatsResponse stats(String tenantId) {
+        Map<String, Long> byStatus = new java.util.LinkedHashMap<>();
+        STATUSES.forEach(status -> byStatus.put(status, 0L));
+        orderRepository.countStatuses(tenantId)
+                .forEach(row -> byStatus.put(row.getStatus(), row.getTotal()));
+        return new OrderStatsResponse(
+                orderRepository.countByTenantIdAndDeletedAtIsNull(tenantId),
+                byStatus);
     }
 
     public OrderResponse updateStatus(

@@ -47,6 +47,7 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
                 .csrf(csrf -> csrf
                         .csrfTokenRepository(csrfRepository)
+                        .ignoringRequestMatchers("/api/v1/internal/marketplace/**")
                         .spa())
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -63,6 +64,7 @@ public class SecurityConfig {
                                 "/api/auth/csrf",
                                 "/error",
                                 "/actuator/health",
+                                "/api/v1/internal/marketplace/**",
                                 "/v3/api-docs/**",
                                 "/swagger-ui/**",
                                 "/swagger-ui.html")

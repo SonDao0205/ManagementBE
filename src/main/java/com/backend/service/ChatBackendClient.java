@@ -49,6 +49,27 @@ public class ChatBackendClient {
         }
     }
 
+    public void notifyOrderStatusUpdated(
+            String tenantId,
+            String orderId,
+            String externalOrderId,
+            String status) {
+        try {
+            restClient.post()
+                    .uri("/api/v1/internal/orders/status-updated")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .header("X-Tenant-Id", tenantId)
+                    .body(Map.of(
+                            "orderId", orderId,
+                            "externalOrderId", externalOrderId,
+                            "status", status))
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (RuntimeException exception) {
+            // Order synchronization must remain successful even if realtime notification is down.
+        }
+    }
+
     public AiShopKnowledgeStatusResponse getShopKnowledgeStatus(
             String tenantId,
             String marketplaceAccountId) {
